@@ -24,7 +24,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Whitelisted admin emails (stored in Firestore or can be hardcoded)
+// Whitelisted admin emails
 const ADMIN_EMAILS = ['shane@nsccr.ca'];
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -32,8 +32,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [isAdmin, setIsAdmin] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [isMounted, setIsMounted] = useState(false);
 
+    // Handle SSR - set mounted flag on client
     useEffect(() => {
+        setIsMounted(true);
+    }, []);
+
+    // Listen to auth state changes (client-side only)
+    useEffect(() => {
+        if (!isMounted) return;
+
+        // Check if auth is properly initialized
+        if (!auth || typeof auth.onAuthStateChanged !== 'function') {
+            console.error('Firebase auth not properly initialized');
+            setLoading(false);
+            return;
+        }
+
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             setUser(user);
 
@@ -60,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
 
         return () => unsubscribe();
-    }, []);
+    }, [isMounted]);
 
     const signIn = async (email: string, password: string) => {
         setError(null);
@@ -87,6 +103,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await firebaseSignOut(auth);
         setIsAdmin(false);
     };
+
+    // Show loading during SSR and initial mount
+    if (!isMounted) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-background">
+                <div className="animate-pulse">Loading...</div>
+            </div>
+        );
+    }
 
     return (
         <AuthContext.Provider value={{ user, isAdmin, loading, signIn, signInWithGoogle, signOut, error }}>

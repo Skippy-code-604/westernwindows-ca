@@ -31,16 +31,38 @@ function AdminLayoutContent({ children }: { children: ReactNode }) {
     const router = useRouter();
     const pathname = usePathname();
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [isMounted, setIsMounted] = useState(false);
+
+    // Check if this is the login page
+    const isLoginPage = pathname === '/admin/login';
 
     useEffect(() => {
-        if (!loading) {
+        setIsMounted(true);
+    }, []);
+
+    useEffect(() => {
+        if (!loading && isMounted && !isLoginPage) {
             if (!user) {
                 router.push('/admin/login');
             } else if (!isAdmin) {
                 router.push('/admin/login');
             }
         }
-    }, [user, isAdmin, loading, router]);
+    }, [user, isAdmin, loading, router, isLoginPage, isMounted]);
+
+    // Show loading during SSR and initial mount
+    if (!isMounted) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-background">
+                <div className="animate-pulse">Loading...</div>
+            </div>
+        );
+    }
+
+    // For login page, just render children directly without auth check
+    if (isLoginPage) {
+        return <>{children}</>;
+    }
 
     if (loading) {
         return (
@@ -139,7 +161,7 @@ function AdminLayoutContent({ children }: { children: ReactNode }) {
                     >
                         <Menu className="h-5 w-5" />
                     </Button>
-                    <span className="font-semibold">Western Windows Admin</span>
+                    <span className="font-semibold">NSCCR Admin</span>
                 </header>
 
                 {/* Page content */}
