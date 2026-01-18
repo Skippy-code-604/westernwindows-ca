@@ -1,0 +1,32 @@
+[debug] [2026-01-18T07:50:31.613Z] ----------------------------------------------------------------------
+[debug] [2026-01-18T07:50:31.616Z] Command:       C:\nvm4w\nodejs\node.exe C:\nvm4w\nodejs\node_modules\firebase-tools\lib\bin\firebase.js apps:sdkconfig WEB 1:705977918244:web:8384f8b839a240243389b1 --project western-windows-website
+[debug] [2026-01-18T07:50:31.616Z] CLI Version:   15.3.1
+[debug] [2026-01-18T07:50:31.616Z] Platform:      win32
+[debug] [2026-01-18T07:50:31.616Z] Node Version:  v20.19.6
+[debug] [2026-01-18T07:50:31.616Z] Time:          Sat Jan 17 2026 23:50:31 GMT-0800 (Pacific Standard Time)
+[debug] [2026-01-18T07:50:31.616Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-01-18T07:50:31.663Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-01-18T07:50:31.664Z] > authorizing via signed-in user (shane@nsccr.ca)
+[debug] [2026-01-18T07:50:31.667Z] Checked if tokens are valid: true, expires at: 1768726195537
+[debug] [2026-01-18T07:50:31.668Z] Checked if tokens are valid: true, expires at: 1768726195537
+[debug] [2026-01-18T07:50:31.669Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/-/webApps/1:705977918244:web:8384f8b839a240243389b1/config [none]
+[debug] [2026-01-18T07:50:32.278Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/-/webApps/1:705977918244:web:8384f8b839a240243389b1/config 200
+[debug] [2026-01-18T07:50:32.278Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/-/webApps/1:705977918244:web:8384f8b839a240243389b1/config {"projectId":"western-windows-website","appId":"1:705977918244:web:8384f8b839a240243389b1","storageBucket":"western-windows-website.firebasestorage.app","apiKey":"AIzaSyD8T34z5gXQxIilnJgW6o8E1f-zUwT2pBc","authDomain":"western-windows-website.firebaseapp.com","messagingSenderId":"705977918244","measurementId":"G-N6ZR5ZJ51F","projectNumber":"705977918244","version":"2"}
+[info] {
+  "projectId": "western-windows-website",
+  "appId": "1:705977918244:web:8384f8b839a240243389b1",
+  "storageBucket": "western-windows-website.firebasestorage.app",
+  "apiKey": "AIzaSyD8T34z5gXQxIilnJgW6o8E1f-zUwT2pBc",
+  "authDomain": "western-windows-website.firebaseapp.com",
+  "messagingSenderId": "705977918244",
+  "measurementId": "G-N6ZR5ZJ51F",
+  "projectNumber": "705977918244",
+  "version": "2"
+}
+[debug] [2026-01-18T07:50:37.327Z] Error: Timed out.
+    at Timeout._onTimeout (C:\Users\shane\AppData\Local\nvm\v20.19.6\node_modules\firebase-tools\lib\utils.js:308:49)
+    at listOnTimeout (node:internal/timers:581:17)
+    at process.processTimers (node:internal/timers:519:7)
+[error] 
+[error] Error: An unexpected error has occurred.
