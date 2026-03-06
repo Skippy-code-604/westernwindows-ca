@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Western Windows Portal — Document Form</title>
+    <link rel="stylesheet" href="/portal/css/styles.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <nav class="navbar">
+            <a href="/portal/dashboard.html" class="navbar-brand">
+                <img src="/portal/ww-logo.png" alt="Western Windows" class="navbar-logo">
+                <div class="navbar-title">WESTERN WINDOWS <span>Portal</span></div>
+            </a>
+            <div class="navbar-actions">
+                <button class="btn btn-ghost btn-sm" id="logout-btn">Logout</button>
+            </div>
+        </nav>
+
+        <div class="page-content">
+            <a href="/portal/dashboard.html" class="back-link">← Back to Dashboard</a>
+
+            <div class="page-header flex-between">
+                <div>
+                    <h1 class="page-title" id="page-title">New Document</h1>
+                    <p class="page-subtitle" id="page-subtitle">Fill in the details below</p>
+                </div>
+                <div class="flex gap-1">
+                    <span class="badge badge-draft" id="doc-status-badge">DRAFT</span>
+                    <span class="badge" id="doc-type-badge">RFQ</span>
+                </div>
+            </div>
+
+            <form id="document-form">
+                <!-- Document Header -->
+                <div class="card mb-2">
+                    <h3 class="section-header">Document Details</h3>
+                    <div class="form-row form-row-4">
+                        <div class="form-group">
+                            <label class="form-label">Document #</label>
+                            <input type="text" class="form-input" id="doc-number" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Date</label>
+                            <input type="date" class="form-input" id="doc-date">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Required By</label>
+                            <input type="date" class="form-input" id="required-date">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Requested By</label>
+                            <input type="text" class="form-input" id="requested-by" value="Shane">
+                        </div>
+                    </div>
+                    <div class="form-row form-row-3">
+                        <div class="form-group">
+                            <label class="form-label">Project / Job Name</label>
+                            <input type="text" class="form-input" id="project-name"
+                                placeholder="e.g. Smith Residence Renovation">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Job / Delivery Address</label>
+                            <input type="text" class="form-input" id="job-address"
+                                placeholder="Start typing an address..." autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Shipping Method</label>
+                            <select class="form-select" id="shipping-method">
+                                <option value="Delivery">Delivery</option>
+                                <option value="Pickup">Pickup</option>
+                                <option value="Will Call">Will Call</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Supplier</label>
+                        <input type="text" class="form-input" id="supplier-name" readonly>
+                        <input type="hidden" id="supplier-id">
+                        <input type="hidden" id="supplier-type">
+                        <input type="hidden" id="doc-type">
+                    </div>
+                </div>
+
+                <!-- Quote Reference (PO only) -->
+                <div class="card mb-2" id="quote-reference-group" style="display:none;">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label">Supplier's Quote / Reference #</label>
+                        <input type="text" class="form-input" id="quote-reference"
+                            placeholder="Enter the manufacturer's quote or reference number">
+                    </div>
+                </div>
+
+                <!-- Line Items -->
+                <div class="card mb-2">
+                    <div class="line-items-header">
+                        <h3 class="section-header" style="margin-bottom:0; border-bottom:none; padding-bottom:0;">Line
+                            Items</h3>
+                        <button type="button" class="btn btn-primary btn-sm" id="add-line-btn">+ Add Line</button>
+                    </div>
+                    <div id="line-items-container">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+
+                <!-- Notes -->
+                <div class="card mb-2">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label">Notes / Special Instructions</label>
+                        <textarea class="form-textarea" id="notes"
+                            placeholder="Any special instructions, delivery notes, etc."></textarea>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex gap-1" style="justify-content: flex-end;">
+                    <button type="button" class="btn btn-outline" id="save-draft-btn">💾 Save Draft</button>
+                    <button type="button" class="btn btn-primary" id="preview-btn">👁️ Preview & Send</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+    <script type="module" src="/portal/js/firebase-auth.js"></script>
+    <script src="/portal/js/utils.js"></script>
+    <script src="/portal/js/form.js"></script>
+    <script>
+        // Google Places Autocomplete for address field
+        function initAutocomplete() {
+            const input = document.getElementById('job-address');
+            if (!input || !window.google) return;
+            const autocomplete = new google.maps.places.Autocomplete(input, {
+                types: ['address'],
+                componentRestrictions: { country: 'ca' },
+                fields: ['formatted_address'],
+            });
+            // Bias toward BC
+            autocomplete.setBounds(new google.maps.LatLngBounds(
+                { lat: 48.3, lng: -139.1 }, { lat: 60.0, lng: -114.0 }
+            ));
+            autocomplete.addListener('place_changed', () => {
+                const place = autocomplete.getPlace();
+                if (place.formatted_address) {
+                    input.value = place.formatted_address;
+                }
+            });
+        }
+    </script>
+    <script
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAZsRsk7Q93iEEGv1ONRiIOLuTWWFMDjcU&libraries=places&callback=initAutocomplete"
+        async defer></script>
+</body>
+
+</html>

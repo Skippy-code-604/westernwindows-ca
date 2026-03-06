@@ -1,0 +1,150 @@
+const express = require('express');
+const router = express.Router();
+const { requireAuth } = require('../auth');
+const store = require('../firestore');
+
+// Lazy-loaded to avoid cold start timeout
+let nodemailer = null;
+let pdfModule = null;
+function getNodemailer() { if (!nodemailer) nodemailer = require('nodemailer'); return nodemailer; }
+function getPdfModule() { if (!pdfModule) pdfModule = require('../pdf'); return pdfModule; }
+
+router.use(requireAuth);
+
+// Generate and preview PDF (returns PDF as binary)
+router.get('/pdf-preview/:id', async (req, res) => {
+    try {
+        const doc = await store.getDocumentById(req.params.id);
+        if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+        const lineItems = doc.line_items || [];
+        const supplierType = doc.supplier_type;
+
+        const pdfDoc = getPdfModule().generatePDF(doc, lineItems, supplierType);
+        const pdfBuffer = getPdfModule().getPDFBuffer(pdfDoc);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${doc.doc_number}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (err) {
+        console.error('Error generating PDF preview:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Download PDF
+router.get('/pdf/:id', async (req, res) => {
+    try {
+        const doc = await store.getDocumentById(req.params.id);
+        if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+        const lineItems = doc.line_items || [];
+        const supplierType = doc.supplier_type;
+
+        const pdfDoc = getPdfModule().generatePDF(doc, lineItems, supplierType);
+        const pdfBuffer = getPdfModule().getPDFBuffer(pdfDoc);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${doc.doc_number}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (err) {
+        console.error('Error generating PDF:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Generate PDF, save to Storage, and send email to supplier
+router.post('/send/:id', async (req, res) => {
+    try {
+        const doc = await store.getDocumentById(req.params.id);
+        if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+        const lineItems = doc.line_items || [];
+        const supplierType = doc.supplier_type;
+
+        // Generate PDF
+        const pdfDoc = getPdfModule().generatePDF(doc, lineItems, supplierType);
+        const pdfBuffer = getPdfModule().getPDFBuffer(pdfDoc);
+        const filename = `${doc.doc_number}.pdf`;
+
+        // Save to Cloud Storage
+        try {
+            const pdfUrl = await getPdfModule().savePDFToStorage(store.getStorage(), pdfDoc, filename);
+            await store.updatePdfUrl(doc.id, pdfUrl);
+        } catch (storageErr) {
+            console.warn('Could not save to Cloud Storage:', storageErr.message);
+        }
+
+        // Determine recipient
+        const isRFQ = doc.doc_type === 'RFQ';
+        const toEmail = isRFQ ? doc.quote_email : doc.order_email;
+        const ccEmail = (process.env.EMAIL_CC || 'shane@westernwindows.ca').trim();
+        const fromEmail = (process.env.EMAIL_FROM || 'shane@westernwindows.ca').trim();
+
+        // Check if SMTP is configured
+        const smtpHost = (process.env.SMTP_HOST || '').trim();
+        const smtpPass = (process.env.SMTP_PASS || '').trim();
+
+        if (!smtpHost || !smtpPass || smtpPass === 'your-email-password-or-app-password') {
+            // SMTP not configured — save PDF but don't send
+            await store.updateDocumentStatus(doc.id, 'Sent');
+            return res.json({
+                success: true,
+                warning: 'SMTP not configured. PDF saved but email not sent.',
+                would_send_to: toEmail,
+                pdf_saved: true,
+            });
+        }
+
+        // Create transporter and send
+        const transporter = getNodemailer().createTransport({
+            host: smtpHost,
+            port: parseInt((process.env.SMTP_PORT || '587').trim()),
+            secure: false,
+            auth: {
+                user: (process.env.SMTP_USER || '').trim(),
+                pass: smtpPass,
+            },
+        });
+
+        const subjectPrefix = isRFQ ? 'Request for Quote' : 'Purchase Order';
+        const mailOpts = {
+            from: `"Western Windows" <${fromEmail}>`,
+            to: toEmail,
+            cc: ccEmail,
+            subject: `${subjectPrefix}: ${doc.doc_number} — ${doc.project_name || 'Western Windows'}`,
+            html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px;">
+          <h2 style="color: #1B3A5C;">${subjectPrefix}</h2>
+          <p>Hi${doc.contact_name ? ' ' + doc.contact_name : ''},</p>
+          <p>Please find attached ${isRFQ ? 'our request for quote' : 'our purchase order'} <strong>${doc.doc_number}</strong>.</p>
+          ${doc.project_name ? `<p><strong>Project:</strong> ${doc.project_name}</p>` : ''}
+          ${doc.required_date ? `<p><strong>Required By:</strong> ${doc.required_date}</p>` : ''}
+          ${doc.quote_reference ? `<p><strong>Reference Quote #:</strong> ${doc.quote_reference}</p>` : ''}
+          <p>Please don't hesitate to reach out if you have any questions.</p>
+          <br>
+          <p>Best regards,<br><strong>${doc.requested_by || 'Shane'}</strong><br>Western Windows<br>info@westernwindows.ca</p>
+        </div>
+      `,
+            attachments: [{
+                filename,
+                content: pdfBuffer,
+                contentType: 'application/pdf',
+            }],
+        };
+
+        await transporter.sendMail(mailOpts);
+        await store.updateDocumentStatus(doc.id, 'Sent');
+
+        res.json({
+            success: true,
+            sent_to: toEmail,
+            cc: ccEmail,
+        });
+    } catch (err) {
+        console.error('Error sending email:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+module.exports = router;

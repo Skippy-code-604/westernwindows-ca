@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+functions/node_modules/
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Environment / Secrets
+.env
+.env.local
+functions/.env
+functions/.env.local
+*.secret
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+
+# Temp
+*.log
+tmp/
+tmp-policy.json
+
+# Media / large files
+*.mp4
+*.mov
+ww Logo.png
+
+# SQLite (old local dev DB)
+server/data/*.db
+server/data/*.db-shm
+server/data/*.db-wal
+
+# Resized logo temp
+functions/ww-logo-small.png

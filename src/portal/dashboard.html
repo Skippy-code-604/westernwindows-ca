@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Western Windows Portal — Dashboard</title>
+    <link rel="stylesheet" href="/portal/css/styles.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Navbar -->
+        <nav class="navbar">
+            <a href="/portal/dashboard.html" class="navbar-brand">
+                <img src="/portal/ww-logo.png" alt="Western Windows" class="navbar-logo">
+                <div class="navbar-title">WESTERN WINDOWS <span>Portal</span></div>
+            </a>
+            <div class="navbar-actions">
+                <span class="navbar-user">👤 Logged in</span>
+                <button class="btn btn-ghost btn-sm" id="logout-btn">Logout</button>
+            </div>
+        </nav>
+
+        <!-- Page Content -->
+        <div class="page-content">
+            <div class="page-header">
+                <h1 class="page-title">Dashboard</h1>
+                <p class="page-subtitle">Create and manage your RFQs and Purchase Orders</p>
+            </div>
+
+            <!-- Action Cards -->
+            <div class="action-grid">
+                <div class="card card-clickable action-card" id="new-rfq-card">
+                    <div class="card-icon">📋</div>
+                    <div class="card-title">New RFQ</div>
+                    <div class="card-subtitle">Request a quote from a supplier</div>
+                </div>
+                <div class="card card-clickable action-card" id="new-po-card">
+                    <div class="card-icon">📦</div>
+                    <div class="card-title">New Purchase Order</div>
+                    <div class="card-subtitle">Place an order with a supplier</div>
+                </div>
+                <div class="card card-clickable action-card" id="history-card">
+                    <div class="card-icon">🔍</div>
+                    <div class="card-title">Search History</div>
+                    <div class="card-subtitle">View and manage past documents</div>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="mt-3">
+                <h2 class="section-header">Recent Activity</h2>
+                <div id="recent-activity">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📄</div>
+                        <p class="empty-state-text">No documents yet. Create your first RFQ or PO!</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+    <script type="module" src="/portal/js/firebase-auth.js"></script>
+    <script src="/portal/js/utils.js"></script>
+    <script src="/portal/js/dashboard.js"></script>
+</body>
+
+</html>
