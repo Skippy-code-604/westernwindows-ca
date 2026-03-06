@@ -89,19 +89,19 @@ function renderResults(docs) {
     tbody.innerHTML = docs.map(doc => `
     <tr>
       <td>${typeBadge(doc.doc_type)}</td>
-      <td class="font-bold" style="white-space:nowrap;">${doc.doc_number}</td>
+      <td class="font-bold" style="white-space:nowrap;">${esc(doc.doc_number)}</td>
       <td style="white-space:nowrap;">${formatDate(doc.created_date)}</td>
-      <td>${doc.supplier_name}</td>
-      <td>${doc.project_name || '—'}</td>
+      <td>${esc(doc.supplier_name)}</td>
+      <td>${esc(doc.project_name) || '—'}</td>
       <td>${statusBadge(doc.status)}</td>
       <td style="white-space:nowrap;">${formatCurrency(doc.total_amount)}</td>
       <td>
         <div class="flex gap-1">
-          <button class="btn btn-ghost btn-sm" onclick="viewDocument('${doc.id}')" title="View/Preview">👁️</button>
-          <button class="btn btn-ghost btn-sm" onclick="editDocument('${doc.id}')" title="Edit">✏️</button>
-          <button class="btn btn-ghost btn-sm" onclick="downloadDoc('${doc.id}')" title="Download PDF">📄</button>
-          ${doc.doc_type === 'PO' ? `<button class="btn btn-ghost btn-sm" onclick="openConfirmation('${doc.id}', '${doc.doc_number}')" title="Order Confirmation">📋</button>` : ''}
-          <button class="btn btn-ghost btn-sm" onclick="deleteDocument('${doc.id}')" title="Delete" style="color:var(--danger);">🗑️</button>
+          <button class="btn btn-ghost btn-sm" onclick="viewDocument('${esc(doc.id)}')" title="View/Preview">👁️</button>
+          <button class="btn btn-ghost btn-sm" onclick="editDocument('${esc(doc.id)}')" title="Edit">✏️</button>
+          <button class="btn btn-ghost btn-sm" onclick="downloadDoc('${esc(doc.id)}')" title="Download PDF">📄</button>
+          ${doc.doc_type === 'PO' ? `<button class="btn btn-ghost btn-sm" onclick="openConfirmation('${esc(doc.id)}', '${esc(doc.doc_number)}')" title="Order Confirmation">📋</button>` : ''}
+          <button class="btn btn-ghost btn-sm" onclick="deleteDocument('${esc(doc.id)}')" title="Delete" style="color:var(--danger);">🗑️</button>
         </div>
       </td>
     </tr>

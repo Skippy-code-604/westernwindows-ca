@@ -50,11 +50,11 @@ function supplierCardHTML(supplier, docType) {
     const typeClass = supplier.type === 'glass' ? 'supplier-type-glass' : 'supplier-type-window';
 
     return `
-    <div class="card card-clickable supplier-card" data-id="${supplier.id}">
-      <span class="supplier-type-badge ${typeClass}">${typeLabel}</span>
-      <div class="card-title">${supplier.name}</div>
-      <div class="card-subtitle">${email || ''}</div>
-      ${supplier.contact_name ? `<div class="text-xs text-muted">Contact: ${supplier.contact_name}</div>` : ''}
+    <div class="card card-clickable supplier-card" data-id="${esc(supplier.id)}">
+      <span class="supplier-type-badge ${typeClass}">${esc(typeLabel)}</span>
+      <div class="card-title">${esc(supplier.name)}</div>
+      <div class="card-subtitle">${esc(email)}</div>
+      ${supplier.contact_name ? `<div class="text-xs text-muted">Contact: ${esc(supplier.contact_name)}</div>` : ''}
     </div>
   `;
 }

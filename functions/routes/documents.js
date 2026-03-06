@@ -67,6 +67,14 @@ router.post('/', async (req, res) => {
     try {
         const { document: docInput, lineItems } = req.body;
 
+        // Input validation
+        if (!docInput) return res.status(400).json({ error: 'Missing document data' });
+        if (!['RFQ', 'PO'].includes(docInput.doc_type)) {
+            return res.status(400).json({ error: 'Invalid doc_type. Must be RFQ or PO.' });
+        }
+        if (!docInput.supplier_id) return res.status(400).json({ error: 'Missing supplier_id' });
+        if (!docInput.doc_number) return res.status(400).json({ error: 'Missing doc_number' });
+
         // Build line items with defaults
         const items = normalizeLineItems(lineItems);
 
@@ -114,6 +122,12 @@ router.get('/:id', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { document: docInput, lineItems } = req.body;
+
+        // Input validation
+        if (!docInput) return res.status(400).json({ error: 'Missing document data' });
+        if (docInput.status && !['Draft', 'Sent', 'Confirmed', 'Cancelled'].includes(docInput.status)) {
+            return res.status(400).json({ error: 'Invalid status' });
+        }
 
         const items = normalizeLineItems(lineItems);
 

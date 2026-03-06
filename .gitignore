@@ -20,9 +20,13 @@ functions/.env.local
 Thumbs.db
 desktop.ini
 
-# IDE
+# IDE / AI Tooling
 .vscode/
 .idea/
+.claude/
+.agent/
+skills/
+.gemini/
 
 # Temp
 *.log

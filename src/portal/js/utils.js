@@ -109,14 +109,25 @@ function formatCurrency(amount) {
     return '$' + Number(amount).toFixed(2);
 }
 
+// HTML escape to prevent XSS
+function esc(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 // Status badge HTML
 function statusBadge(status) {
     const s = (status || 'Draft').toLowerCase();
-    return `<span class="badge badge-${s}">${status || 'Draft'}</span>`;
+    return `<span class="badge badge-${esc(s)}">${esc(status || 'Draft')}</span>`;
 }
 
 // Doc type badge HTML
 function typeBadge(type) {
     const t = (type || 'RFQ').toLowerCase();
-    return `<span class="badge badge-${t}">${type}</span>`;
+    return `<span class="badge badge-${esc(t)}">${esc(type)}</span>`;
 }

@@ -54,13 +54,13 @@ async function loadRecentActivity() {
       html += `
         <tr>
           <td>${typeBadge(doc.doc_type)}</td>
-          <td class="font-bold">${doc.doc_number}</td>
+          <td class="font-bold">${esc(doc.doc_number)}</td>
           <td>${formatDate(doc.created_date)}</td>
-          <td>${doc.supplier_name}</td>
-          <td>${doc.project_name || '—'}</td>
+          <td>${esc(doc.supplier_name)}</td>
+          <td>${esc(doc.project_name) || '—'}</td>
           <td>${statusBadge(doc.status)}</td>
           <td>
-            <button class="btn btn-ghost btn-sm" onclick="viewDoc('${doc.id}')">View</button>
+            <button class="btn btn-ghost btn-sm" onclick="viewDoc('${esc(doc.id)}')">View</button>
           </td>
         </tr>
       `;

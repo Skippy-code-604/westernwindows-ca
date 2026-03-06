@@ -76,25 +76,25 @@ async function getSuppliersByType(type) {
 // ---- DOCUMENTS ----
 
 async function getNextDocNumber(docType) {
+    const db = getDb();
     const year = new Date().getFullYear();
     const prefix = docType === 'RFQ' ? 'RFQ' : 'PO';
-    const pattern = `${prefix}-${year}-`;
+    const counterRef = db.collection('counters').doc(`${prefix}-${year}`);
 
-    const snapshot = await getDb().collection('documents')
-        .where('doc_type', '==', docType)
-        .orderBy('doc_number', 'desc')
-        .limit(1)
-        .get();
+    const nextNum = await db.runTransaction(async (tx) => {
+        const counterDoc = await tx.get(counterRef);
 
-    if (snapshot.empty) return `${prefix}-${year}-0001`;
+        let current = 0;
+        if (counterDoc.exists) {
+            current = counterDoc.data().last || 0;
+        }
 
-    const lastDoc = snapshot.docs[0].data();
-    const lastNumber = lastDoc.doc_number;
+        const next = current + 1;
+        tx.set(counterRef, { last: next, updated_at: new Date() });
+        return next;
+    });
 
-    if (!lastNumber.startsWith(pattern)) return `${prefix}-${year}-0001`;
-
-    const lastNum = parseInt(lastNumber.split('-')[2], 10);
-    return `${prefix}-${year}-${String(lastNum + 1).padStart(4, '0')}`;
+    return `${prefix}-${year}-${String(nextNum).padStart(4, '0')}`;
 }
 
 async function createDocument(docData, lineItems) {
