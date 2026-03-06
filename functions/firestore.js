@@ -244,6 +244,7 @@ async function deleteDocument(id) {
 }
 
 module.exports = {
+    getAdmin,
     getStorage,
     seedSuppliers,
     getAllSuppliers,

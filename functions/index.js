@@ -47,8 +47,7 @@ app.get('/api/auth/check', async (req, res) => {
         return res.json({ authenticated: false });
     }
     try {
-        const admin = require('firebase-admin');
-        if (!admin.apps.length) admin.initializeApp();
+        const admin = store.getAdmin();
         const token = authHeader.split('Bearer ')[1];
         const decoded = await admin.auth().verifyIdToken(token);
         res.json({ authenticated: true, email: decoded.email, name: decoded.name });

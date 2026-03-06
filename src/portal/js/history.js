@@ -118,10 +118,11 @@ function editDocument(id) {
 
 async function downloadDoc(id) {
     try {
-        const res = await fetch(`/api/email/pdf/${id}`, { credentials: 'include' });
-        if (!res.ok) throw new Error('Download failed');
+        const res = await apiFetch(`/email/pdf/${id}`);
+        if (!res || !res.ok) throw new Error('Download failed');
 
-        const blob = await res.blob();
+        const arrayBuf = await res.arrayBuffer();
+        const blob = new Blob([arrayBuf], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;

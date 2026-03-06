@@ -1,4 +1,6 @@
 // Auth middleware — Firebase Auth token verification
+const { getAdmin } = require('./firestore');
+
 async function requireAuth(req, res, next) {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -6,8 +8,7 @@ async function requireAuth(req, res, next) {
     }
 
     try {
-        const admin = require('firebase-admin');
-        if (!admin.apps.length) admin.initializeApp();
+        const admin = getAdmin();
         const token = authHeader.split('Bearer ')[1];
         const decoded = await admin.auth().verifyIdToken(token);
         req.user = decoded;

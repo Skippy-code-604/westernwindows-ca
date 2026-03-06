@@ -5,6 +5,48 @@ const store = require('../firestore');
 
 router.use(requireAuth);
 
+// Shared helper to normalize line item data
+function normalizeLineItems(lineItems) {
+    return (lineItems || []).map((item, idx) => ({
+        line_number: idx + 1,
+        qty: item.qty || 1,
+        width: item.width || null,
+        height: item.height || null,
+        product_type: item.product_type || null,
+        series: item.series || null,
+        glass_type: item.glass_type || null,
+        thickness: item.thickness || null,
+        tint_coating: item.tint_coating || null,
+        is_igu: item.is_igu ? true : false,
+        igu_config: item.igu_config || null,
+        spacer_type: item.spacer_type || null,
+        gas_fill: item.gas_fill || null,
+        shape: item.shape || null,
+        edge_work: item.edge_work || null,
+        holes_cutouts: item.holes_cutouts || null,
+        frit_pattern: item.frit_pattern || null,
+        product_category: item.product_category || null,
+        application_type: item.application_type || null,
+        frame_color: item.frame_color || null,
+        grid_pattern: item.grid_pattern || null,
+        grid_type: item.grid_type || null,
+        glass_package: item.glass_package || null,
+        tempered: item.tempered ? true : false,
+        screen: item.screen || null,
+        hardware_color: item.hardware_color || null,
+        operating_style: item.operating_style || null,
+        energy_star: item.energy_star ? true : false,
+        door_type: item.door_type || null,
+        door_material: item.door_material || null,
+        door_style: item.door_style || null,
+        unit_price: item.unit_price || 0,
+        line_total: (item.qty || 1) * (item.unit_price || 0),
+        frame_type: item.frame_type || null,
+        reno_flange_size: item.reno_flange_size || null,
+        notes: item.notes || null,
+    }));
+}
+
 // Get next available document number
 router.get('/next-number/:type', async (req, res) => {
     try {
@@ -26,44 +68,7 @@ router.post('/', async (req, res) => {
         const { document: docInput, lineItems } = req.body;
 
         // Build line items with defaults
-        const items = (lineItems || []).map((item, idx) => ({
-            line_number: idx + 1,
-            qty: item.qty || 1,
-            width: item.width || null,
-            height: item.height || null,
-            product_type: item.product_type || null,
-            series: item.series || null,
-            glass_type: item.glass_type || null,
-            thickness: item.thickness || null,
-            tint_coating: item.tint_coating || null,
-            is_igu: item.is_igu ? true : false,
-            igu_config: item.igu_config || null,
-            spacer_type: item.spacer_type || null,
-            gas_fill: item.gas_fill || null,
-            shape: item.shape || null,
-            edge_work: item.edge_work || null,
-            holes_cutouts: item.holes_cutouts || null,
-            frit_pattern: item.frit_pattern || null,
-            product_category: item.product_category || null,
-            application_type: item.application_type || null,
-            frame_color: item.frame_color || null,
-            grid_pattern: item.grid_pattern || null,
-            grid_type: item.grid_type || null,
-            glass_package: item.glass_package || null,
-            tempered: item.tempered ? true : false,
-            screen: item.screen || null,
-            hardware_color: item.hardware_color || null,
-            operating_style: item.operating_style || null,
-            energy_star: item.energy_star ? true : false,
-            door_type: item.door_type || null,
-            door_material: item.door_material || null,
-            door_style: item.door_style || null,
-            unit_price: item.unit_price || 0,
-            line_total: (item.qty || 1) * (item.unit_price || 0),
-            frame_type: item.frame_type || null,
-            reno_flange_size: item.reno_flange_size || null,
-            notes: item.notes || null,
-        }));
+        const items = normalizeLineItems(lineItems);
 
         const totalAmount = items.reduce((sum, i) => sum + (i.line_total || 0), 0);
 
@@ -110,44 +115,7 @@ router.put('/:id', async (req, res) => {
     try {
         const { document: docInput, lineItems } = req.body;
 
-        const items = (lineItems || []).map((item, idx) => ({
-            line_number: idx + 1,
-            qty: item.qty || 1,
-            width: item.width || null,
-            height: item.height || null,
-            product_type: item.product_type || null,
-            series: item.series || null,
-            glass_type: item.glass_type || null,
-            thickness: item.thickness || null,
-            tint_coating: item.tint_coating || null,
-            is_igu: item.is_igu ? true : false,
-            igu_config: item.igu_config || null,
-            spacer_type: item.spacer_type || null,
-            gas_fill: item.gas_fill || null,
-            shape: item.shape || null,
-            edge_work: item.edge_work || null,
-            holes_cutouts: item.holes_cutouts || null,
-            frit_pattern: item.frit_pattern || null,
-            product_category: item.product_category || null,
-            application_type: item.application_type || null,
-            frame_color: item.frame_color || null,
-            grid_pattern: item.grid_pattern || null,
-            grid_type: item.grid_type || null,
-            glass_package: item.glass_package || null,
-            tempered: item.tempered ? true : false,
-            screen: item.screen || null,
-            hardware_color: item.hardware_color || null,
-            operating_style: item.operating_style || null,
-            energy_star: item.energy_star ? true : false,
-            door_type: item.door_type || null,
-            door_material: item.door_material || null,
-            door_style: item.door_style || null,
-            unit_price: item.unit_price || 0,
-            line_total: (item.qty || 1) * (item.unit_price || 0),
-            frame_type: item.frame_type || null,
-            reno_flange_size: item.reno_flange_size || null,
-            notes: item.notes || null,
-        }));
+        const items = normalizeLineItems(lineItems);
 
         const totalAmount = items.reduce((sum, i) => sum + (i.line_total || 0), 0);
 
