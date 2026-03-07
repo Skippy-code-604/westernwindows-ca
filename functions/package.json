@@ -4,7 +4,7 @@
     "description": "Western Windows Portal - Cloud Functions",
     "main": "index.js",
     "engines": {
-        "node": "20"
+        "node": "22"
     },
     "dependencies": {
         "cors": "^2.8.6",

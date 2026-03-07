@@ -9,6 +9,21 @@ let pdfModule = null;
 function getNodemailer() { if (!nodemailer) nodemailer = require('nodemailer'); return nodemailer; }
 function getPdfModule() { if (!pdfModule) pdfModule = require('../pdf'); return pdfModule; }
 
+// Server-side HTML escaping for email templates
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+// Sanitize filenames for Content-Disposition headers
+function safeFilename(name) {
+    return String(name || 'document').replace(/[^a-zA-Z0-9\-]/g, '_');
+}
+
 router.use(requireAuth);
 
 // Generate and preview PDF (returns PDF as binary)
@@ -24,7 +39,7 @@ router.get('/pdf-preview/:id', async (req, res) => {
         const pdfBuffer = getPdfModule().getPDFBuffer(pdfDoc);
 
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="${doc.doc_number}.pdf"`);
+        res.setHeader('Content-Disposition', `inline; filename="${safeFilename(doc.doc_number)}.pdf"`);
         res.send(pdfBuffer);
     } catch (err) {
         console.error('Error generating PDF preview:', err);
@@ -45,7 +60,7 @@ router.get('/pdf/:id', async (req, res) => {
         const pdfBuffer = getPdfModule().getPDFBuffer(pdfDoc);
 
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="${doc.doc_number}.pdf"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${safeFilename(doc.doc_number)}.pdf"`);
         res.send(pdfBuffer);
     } catch (err) {
         console.error('Error generating PDF:', err);
@@ -115,15 +130,15 @@ router.post('/send/:id', async (req, res) => {
             subject: `${subjectPrefix}: ${doc.doc_number} — ${doc.project_name || 'Western Windows'}`,
             html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px;">
-          <h2 style="color: #1B3A5C;">${subjectPrefix}</h2>
-          <p>Hi${doc.contact_name ? ' ' + doc.contact_name : ''},</p>
-          <p>Please find attached ${isRFQ ? 'our request for quote' : 'our purchase order'} <strong>${doc.doc_number}</strong>.</p>
-          ${doc.project_name ? `<p><strong>Project:</strong> ${doc.project_name}</p>` : ''}
-          ${doc.required_date ? `<p><strong>Required By:</strong> ${doc.required_date}</p>` : ''}
-          ${doc.quote_reference ? `<p><strong>Reference Quote #:</strong> ${doc.quote_reference}</p>` : ''}
+          <h2 style="color: #1B3A5C;">${escapeHtml(subjectPrefix)}</h2>
+          <p>Hi${doc.contact_name ? ' ' + escapeHtml(doc.contact_name) : ''},</p>
+          <p>Please find attached ${isRFQ ? 'our request for quote' : 'our purchase order'} <strong>${escapeHtml(doc.doc_number)}</strong>.</p>
+          ${doc.project_name ? `<p><strong>Project:</strong> ${escapeHtml(doc.project_name)}</p>` : ''}
+          ${doc.required_date ? `<p><strong>Required By:</strong> ${escapeHtml(doc.required_date)}</p>` : ''}
+          ${doc.quote_reference ? `<p><strong>Reference Quote #:</strong> ${escapeHtml(doc.quote_reference)}</p>` : ''}
           <p>Please don't hesitate to reach out if you have any questions.</p>
           <br>
-          <p>Best regards,<br><strong>${doc.requested_by || 'Shane'}</strong><br>Western Windows<br>info@westernwindows.ca</p>
+          <p>Best regards,<br><strong>${escapeHtml(doc.requested_by || 'Shane')}</strong><br>Western Windows<br>info@westernwindows.ca</p>
         </div>
       `,
             attachments: [{

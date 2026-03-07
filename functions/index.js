@@ -9,8 +9,27 @@ const app = express();
 // Trust Firebase Hosting / Cloud Run reverse proxy
 app.set('trust proxy', 1);
 
-// Middleware
-app.use(cors({ origin: true, credentials: true }));
+// Don't leak framework info
+app.disable('x-powered-by');
+
+// CORS — only allow our own domains
+const ALLOWED_ORIGINS = [
+    'https://western-windows-ca.web.app',
+    'https://western-windows-ca.firebaseapp.com',
+];
+if (process.env.LOCAL_DEV === 'true') {
+    ALLOWED_ORIGINS.push('http://localhost:3000');
+}
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('CORS blocked'));
+        }
+    },
+    credentials: true,
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 

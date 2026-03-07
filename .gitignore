@@ -38,10 +38,8 @@ tmp-policy.json
 *.mov
 ww Logo.png
 
-# SQLite (old local dev DB)
-server/data/*.db
-server/data/*.db-shm
-server/data/*.db-wal
+# Legacy (server/ removed)
+
 
 # Resized logo temp
 functions/ww-logo-small.png

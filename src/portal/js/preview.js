@@ -74,7 +74,7 @@ async function loadDocument(id) {
         const isRFQ = currentDoc.doc_type === 'RFQ';
         const targetEmail = isRFQ ? currentDoc.quote_email : currentDoc.order_email;
         document.getElementById('send-info').innerHTML = `
-      <strong>Will send to:</strong> ${targetEmail}<br>
+      <strong>Will send to:</strong> ${esc(targetEmail)}<br>
       <strong>CC:</strong> shane@westernwindows.ca<br>
       <strong>From:</strong> info@westernwindows.ca
     `;
@@ -141,8 +141,8 @@ async function sendToSupplier(id) {
           <span>⚠️</span>
           <div>
             <strong>PDF saved but email not configured.</strong><br>
-            <span class="text-xs">${result.warning}</span><br>
-            <span class="text-xs">Would send to: ${result.would_send_to}</span>
+            <span class="text-xs">${esc(result.warning)}</span><br>
+            <span class="text-xs">Would send to: ${esc(result.would_send_to)}</span>
           </div>
         </div>
       `;
@@ -153,7 +153,7 @@ async function sendToSupplier(id) {
           <span>✅</span>
           <div>
             <strong>Email sent successfully!</strong><br>
-            <span class="text-xs">To: ${result.sent_to} | CC: ${result.cc}</span>
+            <span class="text-xs">To: ${esc(result.sent_to)} | CC: ${esc(result.cc)}</span>
           </div>
         </div>
       `;
