@@ -16,6 +16,8 @@ app.disable('x-powered-by');
 const ALLOWED_ORIGINS = [
     'https://western-windows-ca.web.app',
     'https://western-windows-ca.firebaseapp.com',
+    'https://westernwindows.ca',
+    'https://www.westernwindows.ca',
 ];
 if (process.env.LOCAL_DEV === 'true') {
     ALLOWED_ORIGINS.push('http://localhost:3000');
