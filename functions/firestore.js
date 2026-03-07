@@ -194,6 +194,14 @@ async function updatePdfUrl(id, url) {
     });
 }
 
+async function updateDriveUrl(id, url) {
+    const a = getAdmin();
+    await getDb().collection('documents').doc(id).update({
+        drive_url: url,
+        updated_at: a.firestore.FieldValue.serverTimestamp(),
+    });
+}
+
 async function searchDocuments(filters) {
     let query = getDb().collection('documents');
 
@@ -258,6 +266,7 @@ module.exports = {
     updateDocumentStatus,
     updateOrderConfirmation,
     updatePdfUrl,
+    updateDriveUrl,
     searchDocuments,
     getRecentDocuments,
     deleteDocument,

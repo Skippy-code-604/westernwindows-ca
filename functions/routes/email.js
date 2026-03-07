@@ -6,8 +6,10 @@ const store = require('../firestore');
 // Lazy-loaded to avoid cold start timeout
 let nodemailer = null;
 let pdfModule = null;
+let driveModule = null;
 function getNodemailer() { if (!nodemailer) nodemailer = require('nodemailer'); return nodemailer; }
 function getPdfModule() { if (!pdfModule) pdfModule = require('../pdf'); return pdfModule; }
+function getDriveModule() { if (!driveModule) driveModule = require('../drive'); return driveModule; }
 
 // Server-side HTML escaping for email templates
 function escapeHtml(str) {
@@ -88,6 +90,19 @@ router.post('/send/:id', async (req, res) => {
             await store.updatePdfUrl(doc.id, pdfUrl);
         } catch (storageErr) {
             console.warn('Could not save to Cloud Storage:', storageErr.message);
+        }
+
+        // Auto-export to Google Drive
+        try {
+            const rootFolderId = (process.env.DRIVE_ROOT_FOLDER_ID || '').trim();
+            if (rootFolderId) {
+                const driveLink = await getDriveModule().uploadPDF(rootFolderId, doc, pdfBuffer);
+                if (driveLink) {
+                    await store.updateDriveUrl(doc.id, driveLink);
+                }
+            }
+        } catch (driveErr) {
+            console.warn('Could not export to Google Drive:', driveErr.message);
         }
 
         // Determine recipient

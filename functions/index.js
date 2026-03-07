@@ -86,9 +86,9 @@ app.use('/api/email', require('./routes/email'));
 exports.api = onRequest({
     region: 'us-west1',
     invoker: 'public',
-    timeoutSeconds: 60,
-    memory: '256MiB',
-    secrets: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'EMAIL_FROM', 'EMAIL_CC'],
+    timeoutSeconds: 120,
+    memory: '512MiB',
+    secrets: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'EMAIL_FROM', 'EMAIL_CC', 'DRIVE_ROOT_FOLDER_ID'],
 }, app);
 
 // --- Local development server ---
