@@ -95,6 +95,24 @@ async function loadDocument(id) {
             document.getElementById('send-btn').classList.remove('btn-accent');
         }
 
+        // Show Convert to PO button for sent RFQs
+        if (isRFQ && (currentDoc.status === 'Sent' || currentDoc.status === 'Confirmed')) {
+            const actionsArea = document.getElementById('send-btn').parentElement;
+            if (actionsArea) {
+                const convertBtn = document.createElement('button');
+                convertBtn.className = 'btn btn-primary';
+                convertBtn.innerHTML = '📋 Convert to PO';
+                convertBtn.addEventListener('click', () => convertToPO(currentDoc.id));
+                actionsArea.appendChild(convertBtn);
+            }
+        }
+
+        // Show Compare Quotes link for batch group RFQs
+        if (currentDoc.batch_group) {
+            const sendInfo = document.getElementById('send-info');
+            sendInfo.innerHTML += `<br><a href="/portal/compare.html?group=${encodeURIComponent(currentDoc.batch_group)}" class="btn btn-outline btn-sm" style="margin-top:10px;">📊 Compare Supplier Quotes</a>`;
+        }
+
     } catch (err) {
         console.error('Error loading document:', err);
         showToast('Error loading document', 'error');
@@ -170,7 +188,14 @@ async function loadBatchDocuments(ids) {
     const backLink = document.getElementById('back-link');
 
     if (editBtn) editBtn.style.display = 'none';
-    if (downloadBtn) downloadBtn.style.display = 'none';
+    if (downloadBtn) {
+        downloadBtn.innerHTML = '📊 Compare Quotes';
+        downloadBtn.style.display = '';
+        downloadBtn.onclick = () => {
+            const docIds = batchDocs.map(d => d.id).join(',');
+            window.location.href = `/portal/compare.html?ids=${docIds}`;
+        };
+    }
     if (backLink) backLink.href = `/portal/suppliers.html?type=RFQ`;
 
     if (sendBtn) {
@@ -260,6 +285,24 @@ async function sendBatch(ids) {
 }
 
 // ---- Single Document Actions ----
+
+async function convertToPO(rfqId) {
+    try {
+        const res = await apiFetch(`/documents/${rfqId}/convert-to-po`, { method: 'POST' });
+        if (!res || !res.ok) {
+            const err = await res.json();
+            showToast(err.error || 'Conversion failed', 'error');
+            return;
+        }
+        const { document: po } = await res.json();
+        showToast(`Created ${po.doc_number} from RFQ!`, 'success');
+        // Navigate to edit the new PO (so user can add prices)
+        window.location.href = `/portal/form.html?edit=${po.id}`;
+    } catch (err) {
+        console.error('Convert error:', err);
+        showToast('Error converting to PO', 'error');
+    }
+}
 
 async function downloadPDF(id) {
     try {

@@ -251,6 +251,14 @@ async function deleteDocument(id) {
     await getDb().collection('documents').doc(id).delete();
 }
 
+async function getDocumentsByBatchGroup(group) {
+    const snapshot = await getDb().collection('documents')
+        .where('batch_group', '==', group)
+        .orderBy('created_at', 'desc')
+        .get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
 module.exports = {
     getAdmin,
     getStorage,
@@ -270,4 +278,5 @@ module.exports = {
     searchDocuments,
     getRecentDocuments,
     deleteDocument,
+    getDocumentsByBatchGroup,
 };
