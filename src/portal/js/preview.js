@@ -1,33 +1,42 @@
 // ---- Preview Page Logic ----
 
 let currentDoc = null;
+let batchDocs = [];   // For multi-supplier preview
+let batchIds = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
     if (!(await checkAuth())) return;
     setupLogout();
 
     const docId = getUrlParam('id');
-    if (!docId) {
+    const idsParam = getUrlParam('ids'); // comma-separated for batch
+
+    if (idsParam) {
+        // Multi-supplier batch preview
+        batchIds = idsParam.split(',').filter(Boolean);
+        await loadBatchDocuments(batchIds);
+    } else if (docId) {
+        await loadDocument(docId);
+
+        document.getElementById('edit-btn').addEventListener('click', () => {
+            window.location.href = `/portal/form.html?edit=${docId}`;
+        });
+
+        document.getElementById('download-btn').addEventListener('click', () => {
+            downloadPDF(docId);
+        });
+
+        document.getElementById('send-btn').addEventListener('click', () => {
+            sendToSupplier(docId);
+        });
+
+        document.getElementById('back-link').href = `/portal/form.html?edit=${docId}`;
+    } else {
         showToast('No document ID provided', 'error');
-        return;
     }
-
-    await loadDocument(docId);
-
-    document.getElementById('edit-btn').addEventListener('click', () => {
-        window.location.href = `/portal/form.html?edit=${docId}`;
-    });
-
-    document.getElementById('download-btn').addEventListener('click', () => {
-        downloadPDF(docId);
-    });
-
-    document.getElementById('send-btn').addEventListener('click', () => {
-        sendToSupplier(docId);
-    });
-
-    document.getElementById('back-link').href = `/portal/form.html?edit=${docId}`;
 });
+
+// ---- Single Document Preview ----
 
 async function loadDocument(id) {
     try {
@@ -91,6 +100,166 @@ async function loadDocument(id) {
         showToast('Error loading document', 'error');
     }
 }
+
+// ---- Batch Preview (Multi-Supplier) ----
+
+async function loadBatchDocuments(ids) {
+    batchDocs = [];
+
+    for (const id of ids) {
+        try {
+            const res = await apiFetch(`/documents/${id}`);
+            if (res && res.ok) {
+                const data = await res.json();
+                batchDocs.push(data.document);
+            }
+        } catch (err) {
+            console.error(`Error loading doc ${id}:`, err);
+        }
+    }
+
+    if (batchDocs.length === 0) {
+        showToast('No documents found', 'error');
+        return;
+    }
+
+    // Update page headers for batch mode
+    document.getElementById('page-title').textContent = 'Multi-Supplier RFQ Preview';
+    document.getElementById('page-subtitle').textContent =
+        batchDocs[0].project_name || 'Competitive Bid';
+
+    const typeBadge = document.getElementById('doc-type-badge');
+    typeBadge.textContent = 'RFQ';
+    typeBadge.className = 'badge badge-rfq';
+
+    const statusBadge = document.getElementById('doc-status-badge');
+    statusBadge.textContent = `${batchDocs.length} Documents`;
+    statusBadge.className = 'badge badge-draft';
+
+    // Hide single-doc elements, show batch UI
+    const pdfPreview = document.getElementById('pdf-preview');
+    if (pdfPreview) pdfPreview.style.display = 'none';
+
+    const sendInfo = document.getElementById('send-info');
+    const actionsEl = document.querySelector('.preview-actions') || document.querySelector('.card-actions');
+
+    // Build batch summary
+    sendInfo.innerHTML = `
+        <div class="batch-summary">
+            <h3 style="margin-bottom:12px;">📋 Documents to Send</h3>
+            ${batchDocs.map((doc, i) => `
+                <div class="batch-doc-row" id="batch-row-${doc.id}">
+                    <div class="batch-doc-info">
+                        <strong>${esc(doc.doc_number)}</strong>
+                        <span class="text-muted">→</span>
+                        <strong>${esc(doc.supplier_name)}</strong>
+                        <span class="text-xs text-muted">(${esc(doc.quote_email || doc.order_email || 'no email')})</span>
+                    </div>
+                    <div class="batch-doc-status">
+                        <span class="badge badge-${doc.status.toLowerCase()}" id="batch-status-${doc.id}">${doc.status}</span>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+
+    // Replace buttons
+    const editBtn = document.getElementById('edit-btn');
+    const downloadBtn = document.getElementById('download-btn');
+    const sendBtn = document.getElementById('send-btn');
+    const backLink = document.getElementById('back-link');
+
+    if (editBtn) editBtn.style.display = 'none';
+    if (downloadBtn) downloadBtn.style.display = 'none';
+    if (backLink) backLink.href = `/portal/suppliers.html?type=RFQ`;
+
+    if (sendBtn) {
+        sendBtn.innerHTML = `📧 Send All (${batchDocs.length} suppliers)`;
+        sendBtn.onclick = () => sendBatch(ids);
+    }
+}
+
+async function sendBatch(ids) {
+    const sendBtn = document.getElementById('send-btn');
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<span class="spinner"></span> Sending...';
+
+    try {
+        const res = await apiFetch('/email/send-batch', {
+            method: 'POST',
+            body: { ids },
+        });
+
+        if (!res || !res.ok) {
+            const err = await res.json();
+            showToast(err.error || 'Batch send failed', 'error');
+            sendBtn.disabled = false;
+            sendBtn.innerHTML = `📧 Send All (${ids.length} suppliers)`;
+            return;
+        }
+
+        const { results } = await res.json();
+
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const r of results) {
+            const statusEl = document.getElementById(`batch-status-${r.id}`);
+            const rowEl = document.getElementById(`batch-row-${r.id}`);
+
+            if (r.success) {
+                successCount++;
+                if (statusEl) {
+                    statusEl.textContent = 'Sent';
+                    statusEl.className = 'badge badge-sent';
+                }
+                if (rowEl) rowEl.style.borderLeft = '3px solid var(--green, #22c55e)';
+            } else {
+                failCount++;
+                if (statusEl) {
+                    statusEl.textContent = 'Failed';
+                    statusEl.className = 'badge badge-error';
+                }
+                if (rowEl) rowEl.style.borderLeft = '3px solid var(--red, #ef4444)';
+            }
+        }
+
+        sendBtn.innerHTML = '✅ All Sent';
+        sendBtn.classList.add('btn-outline');
+        sendBtn.classList.remove('btn-accent');
+
+        if (failCount > 0) {
+            showToast(`${successCount} sent, ${failCount} failed`, 'warning');
+        } else {
+            showToast(`All ${successCount} RFQs sent successfully!`, 'success');
+        }
+
+        // Show result summary
+        const resultDiv = document.getElementById('send-result');
+        if (resultDiv) {
+            resultDiv.classList.remove('hidden');
+            resultDiv.innerHTML = `
+                <div class="toast toast-success" style="position:static; animation:none;">
+                    <span>✅</span>
+                    <div>
+                        <strong>${successCount} of ${results.length} RFQs sent</strong><br>
+                        ${results.filter(r => r.success).map(r =>
+                `<span class="text-xs">${esc(r.doc_number)} → ${esc(r.supplier_name)} (${esc(r.sent_to)})</span><br>`
+            ).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+    } catch (err) {
+        console.error('Batch send error:', err);
+        showToast('Error sending batch', 'error');
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = `📧 Send All (${ids.length} suppliers)`;
+    }
+}
+
+// ---- Single Document Actions ----
 
 async function downloadPDF(id) {
     try {

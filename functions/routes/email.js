@@ -177,4 +177,98 @@ router.post('/send/:id', async (req, res) => {
     }
 });
 
+// Batch send — send multiple documents in one call
+router.post('/send-batch', async (req, res) => {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'Missing ids array' });
+    }
+
+    const results = [];
+    for (const id of ids) {
+        try {
+            const doc = await store.getDocumentById(id);
+            if (!doc) {
+                results.push({ id, success: false, error: 'Document not found' });
+                continue;
+            }
+
+            const lineItems = doc.line_items || [];
+            const supplierType = doc.supplier_type;
+
+            // Generate PDF
+            const pdfDoc = getPdfModule().generatePDF(doc, lineItems, supplierType);
+            const pdfBuffer = getPdfModule().getPDFBuffer(pdfDoc);
+            const filename = `${doc.doc_number}.pdf`;
+
+            // Save to Cloud Storage
+            try {
+                const pdfUrl = await getPdfModule().savePDFToStorage(store.getStorage(), pdfDoc, filename);
+                await store.updatePdfUrl(doc.id, pdfUrl);
+            } catch (storageErr) {
+                console.warn('Could not save to Cloud Storage:', storageErr.message);
+            }
+
+            // Auto-export to Google Drive
+            try {
+                const rootFolderId = (process.env.DRIVE_ROOT_FOLDER_ID || '').trim();
+                if (rootFolderId) {
+                    const driveLink = await getDriveModule().uploadPDF(rootFolderId, doc, pdfBuffer);
+                    if (driveLink) {
+                        await store.updateDriveUrl(doc.id, driveLink);
+                    }
+                }
+            } catch (driveErr) {
+                console.warn('Could not export to Google Drive:', driveErr.message);
+            }
+
+            // Send email
+            const isRFQ = doc.doc_type === 'RFQ';
+            const toEmail = isRFQ ? doc.quote_email : doc.order_email;
+            const ccEmail = (process.env.EMAIL_CC || 'shane@westernwindows.ca').trim();
+            const fromEmail = (process.env.EMAIL_FROM || 'shane@westernwindows.ca').trim();
+            const smtpHost = (process.env.SMTP_HOST || '').trim();
+            const smtpPass = (process.env.SMTP_PASS || '').trim();
+
+            if (!smtpHost || !smtpPass || smtpPass === 'your-email-password-or-app-password') {
+                await store.updateDocumentStatus(doc.id, 'Sent');
+                results.push({ id, success: true, sent_to: toEmail, warning: 'SMTP not configured' });
+                continue;
+            }
+
+            const transporter = getNodemailer().createTransport({
+                host: smtpHost,
+                port: parseInt(process.env.SMTP_PORT || '587'),
+                secure: parseInt(process.env.SMTP_PORT || '587') === 465,
+                auth: { user: process.env.SMTP_USER, pass: smtpPass },
+            });
+
+            const subject = isRFQ
+                ? `RFQ ${doc.doc_number} — ${doc.project_name || 'Quote Request'}`
+                : `PO ${doc.doc_number} — ${doc.project_name || 'Purchase Order'}`;
+
+            await transporter.sendMail({
+                from: `"Western Windows" <${fromEmail}>`,
+                to: toEmail,
+                cc: ccEmail,
+                subject,
+                text: `Please find attached ${doc.doc_type} ${doc.doc_number}.`,
+                html: `<p>Please find attached <strong>${escapeHtml(doc.doc_type)} ${escapeHtml(doc.doc_number)}</strong>.</p>
+                       <p>Project: ${escapeHtml(doc.project_name || 'N/A')}</p>
+                       <p style="color:#999;font-size:12px;">Sent via Western Windows Portal</p>`,
+                attachments: [{ filename, content: pdfBuffer, contentType: 'application/pdf' }],
+            });
+
+            await store.updateDocumentStatus(doc.id, 'Sent');
+            results.push({ id, success: true, sent_to: toEmail, doc_number: doc.doc_number, supplier_name: doc.supplier_name });
+
+        } catch (err) {
+            console.error(`Error sending ${id}:`, err);
+            results.push({ id, success: false, error: err.message });
+        }
+    }
+
+    res.json({ results });
+});
+
 module.exports = router;

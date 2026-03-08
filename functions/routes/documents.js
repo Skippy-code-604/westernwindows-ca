@@ -104,6 +104,61 @@ router.post('/', async (req, res) => {
     }
 });
 
+// Create multiple documents (one per supplier) from the same line items
+router.post('/batch', async (req, res) => {
+    try {
+        const { document: docInput, lineItems, supplier_ids } = req.body;
+
+        if (!docInput) return res.status(400).json({ error: 'Missing document data' });
+        if (!Array.isArray(supplier_ids) || supplier_ids.length === 0) {
+            return res.status(400).json({ error: 'Missing supplier_ids array' });
+        }
+        if (!['RFQ', 'PO'].includes(docInput.doc_type)) {
+            return res.status(400).json({ error: 'Invalid doc_type' });
+        }
+
+        const items = normalizeLineItems(lineItems);
+        const totalAmount = items.reduce((sum, i) => sum + (i.line_total || 0), 0);
+
+        // Fetch all suppliers
+        const suppliers = [];
+        for (const sid of supplier_ids) {
+            const supplier = await store.getSupplierById(sid);
+            if (!supplier) return res.status(404).json({ error: `Supplier not found: ${sid}` });
+            suppliers.push(supplier);
+        }
+
+        // Create one document per supplier, each with its own doc number
+        const created = [];
+        for (const supplier of suppliers) {
+            const docNumber = await store.getNextDocNumber(docInput.doc_type);
+            const docData = {
+                doc_type: docInput.doc_type,
+                doc_number: docNumber,
+                status: 'Draft',
+                created_date: docInput.created_date || new Date().toISOString().split('T')[0],
+                required_date: docInput.required_date || null,
+                supplier_id: supplier.id,
+                project_name: docInput.project_name || null,
+                job_address: docInput.job_address || null,
+                requested_by: docInput.requested_by || 'Shane',
+                shipping_method: docInput.shipping_method || 'Delivery',
+                notes: docInput.notes || null,
+                quote_reference: docInput.quote_reference || null,
+                total_amount: totalAmount,
+                batch_group: supplier_ids.join(','), // Link related docs
+            };
+            const doc = await store.createDocument(docData, items);
+            created.push(doc);
+        }
+
+        res.status(201).json({ documents: created });
+    } catch (err) {
+        console.error('Error creating batch documents:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Get a document by ID
 router.get('/:id', async (req, res) => {
     try {

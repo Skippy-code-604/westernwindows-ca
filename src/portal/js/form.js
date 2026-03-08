@@ -4,6 +4,8 @@ let currentSupplier = null;
 let currentDocType = null;
 let lineItemCount = 0;
 let editingDocId = null;
+let multiSupplierIds = []; // For multi-supplier RFQ
+let multiSuppliers = [];   // Full supplier objects
 
 document.addEventListener('DOMContentLoaded', async () => {
   if (!(await checkAuth())) return;
@@ -11,6 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   currentDocType = getUrlParam('type') || 'RFQ';
   const supplierId = getUrlParam('supplier');
+  const suppliersParam = getUrlParam('suppliers'); // comma-separated IDs
   editingDocId = getUrlParam('edit');
 
   // Set today's date
@@ -31,6 +34,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (editingDocId) {
     await loadExistingDocument(editingDocId);
+  } else if (suppliersParam) {
+    // Multi-supplier RFQ mode
+    multiSupplierIds = suppliersParam.split(',').filter(Boolean);
+    await loadMultiSuppliers(multiSupplierIds);
+    addLineItem();
   } else if (supplierId) {
     await loadSupplier(supplierId);
     await assignDocNumber();
@@ -59,6 +67,42 @@ async function loadSupplier(id) {
   document.getElementById('page-subtitle').textContent = isRFQ
     ? 'Request a quote from this supplier'
     : 'Create a purchase order for this supplier';
+}
+
+async function loadMultiSuppliers(ids) {
+  multiSuppliers = [];
+  for (const id of ids) {
+    const res = await apiFetch(`/suppliers/${id}`);
+    if (res && res.ok) {
+      multiSuppliers.push(await res.json());
+    }
+  }
+
+  if (multiSuppliers.length === 0) return;
+
+  // Use the first supplier for line item field rendering (determines glass vs window fields)
+  currentSupplier = multiSuppliers[0];
+  document.getElementById('supplier-name').value = 'Multiple Suppliers';
+  document.getElementById('supplier-id').value = currentSupplier.id;
+  document.getElementById('supplier-type').value = currentSupplier.type;
+
+  // Hide doc number (batch will assign individual numbers)
+  document.getElementById('doc-number').value = '(auto-assigned)';
+  document.getElementById('doc-number').readOnly = true;
+
+  document.getElementById('page-title').textContent = `Multi-Supplier RFQ`;
+  document.getElementById('page-subtitle').textContent =
+    multiSuppliers.map(s => s.name).join(', ');
+
+  // Show a banner
+  const banner = document.createElement('div');
+  banner.className = 'multi-supplier-banner';
+  banner.innerHTML = `
+    <strong>📋 Multi-Supplier RFQ</strong> — This RFQ will be sent to <strong>${multiSuppliers.length} suppliers</strong>:
+    ${multiSuppliers.map(s => `<span class="badge badge-rfq" style="margin-left:6px;">${esc(s.name)}</span>`).join('')}
+  `;
+  const formEl = document.querySelector('.form-container') || document.querySelector('form') || document.querySelector('main');
+  if (formEl) formEl.prepend(banner);
 }
 
 async function assignDocNumber() {
@@ -698,7 +742,29 @@ async function saveDraft() {
 
   try {
     let res;
-    if (editingDocId) {
+
+    if (multiSupplierIds.length > 1) {
+      // Multi-supplier batch save
+      res = await apiFetch('/documents/batch', {
+        method: 'POST',
+        body: {
+          document: data.document,
+          lineItems: data.lineItems,
+          supplier_ids: multiSupplierIds,
+        },
+      });
+
+      if (!res || !res.ok) {
+        const err = await res.json();
+        showToast(err.error || 'Error saving', 'error');
+        return;
+      }
+
+      const result = await res.json();
+      showToast(`${result.documents.length} drafts saved!`, 'success');
+      return;
+
+    } else if (editingDocId) {
       res = await apiFetch(`/documents/${editingDocId}`, {
         method: 'PUT',
         body: data,
@@ -732,7 +798,32 @@ async function previewAndSend() {
 
   try {
     let res;
-    if (editingDocId) {
+
+    if (multiSupplierIds.length > 1) {
+      // Multi-supplier batch create + preview
+      res = await apiFetch('/documents/batch', {
+        method: 'POST',
+        body: {
+          document: data.document,
+          lineItems: data.lineItems,
+          supplier_ids: multiSupplierIds,
+        },
+      });
+
+      if (!res || !res.ok) {
+        const err = await res.json();
+        showToast(err.error || 'Error saving', 'error');
+        return;
+      }
+
+      const result = await res.json();
+      const ids = result.documents.map(d => d.id).join(',');
+
+      // Navigate to batch preview
+      window.location.href = `/portal/preview.html?ids=${ids}`;
+      return;
+
+    } else if (editingDocId) {
       res = await apiFetch(`/documents/${editingDocId}`, {
         method: 'PUT',
         body: data,
