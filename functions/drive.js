@@ -19,8 +19,8 @@ const MONTH_NAMES = [
 const folderCache = new Map();
 
 /**
- * Get an authenticated Google Drive client using domain-wide delegation.
- * The service account impersonates a workspace user (who has Drive quota).
+ * Get an authenticated Google Drive client using a service account key
+ * with domain-wide delegation (impersonating a workspace user).
  */
 function getDrive() {
     if (driveClient) return driveClient;
@@ -29,11 +29,20 @@ function getDrive() {
         google = require('googleapis').google;
     }
 
+    const saKeyJson = (process.env.DRIVE_SA_KEY || '').trim();
     const impersonateEmail = (process.env.DRIVE_IMPERSONATE_EMAIL || '').trim();
 
-    const auth = new google.auth.GoogleAuth({
+    if (!saKeyJson) {
+        throw new Error('DRIVE_SA_KEY secret not configured');
+    }
+
+    const saKey = JSON.parse(saKeyJson);
+
+    const auth = new google.auth.JWT({
+        email: saKey.client_email,
+        key: saKey.private_key,
         scopes: ['https://www.googleapis.com/auth/drive'],
-        clientOptions: impersonateEmail ? { subject: impersonateEmail } : undefined,
+        subject: impersonateEmail || undefined,
     });
 
     driveClient = google.drive({ version: 'v3', auth });

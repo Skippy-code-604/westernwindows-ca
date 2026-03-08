@@ -88,7 +88,7 @@ exports.api = onRequest({
     invoker: 'public',
     timeoutSeconds: 120,
     memory: '512MiB',
-    secrets: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'EMAIL_FROM', 'EMAIL_CC', 'DRIVE_ROOT_FOLDER_ID', 'DRIVE_IMPERSONATE_EMAIL'],
+    secrets: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'EMAIL_FROM', 'EMAIL_CC', 'DRIVE_ROOT_FOLDER_ID', 'DRIVE_IMPERSONATE_EMAIL', 'DRIVE_SA_KEY'],
 }, app);
 
 // --- Local development server ---
