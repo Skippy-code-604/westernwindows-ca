@@ -121,6 +121,8 @@ async function createDocument(docData, lineItems) {
         quote_reference: docData.quote_reference || null,
         order_confirmation: null,
         total_amount: docData.total_amount || 0,
+        batch_group: docData.batch_group || null,
+        converted_from_rfq: docData.converted_from_rfq || null,
         pdf_url: null,
         sent_at: null,
         created_at: a.firestore.FieldValue.serverTimestamp(),
@@ -254,7 +256,6 @@ async function deleteDocument(id) {
 async function getDocumentsByBatchGroup(group) {
     const snapshot = await getDb().collection('documents')
         .where('batch_group', '==', group)
-        .orderBy('created_at', 'desc')
         .get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
