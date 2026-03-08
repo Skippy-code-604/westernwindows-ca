@@ -100,6 +100,7 @@ function renderResults(docs) {
           <button class="btn btn-ghost btn-sm" onclick="viewDocument('${esc(doc.id)}')" title="View/Preview">👁️</button>
           <button class="btn btn-ghost btn-sm" onclick="editDocument('${esc(doc.id)}')" title="Edit">✏️</button>
           <button class="btn btn-ghost btn-sm" onclick="downloadDoc('${esc(doc.id)}')" title="Download PDF">📄</button>
+          ${doc.batch_group ? `<button class="btn btn-ghost btn-sm" onclick="compareGroup('${esc(doc.batch_group)}')" title="Compare Quotes">📊</button>` : ''}
           ${doc.doc_type === 'PO' ? `<button class="btn btn-ghost btn-sm" onclick="openConfirmation('${esc(doc.id)}', '${esc(doc.doc_number)}')" title="Order Confirmation">📋</button>` : ''}
           <button class="btn btn-ghost btn-sm" onclick="deleteDocument('${esc(doc.id)}')" title="Delete" style="color:var(--danger);">🗑️</button>
         </div>
@@ -110,6 +111,10 @@ function renderResults(docs) {
 
 function viewDocument(id) {
     window.location.href = `/portal/preview.html?id=${id}`;
+}
+
+function compareGroup(group) {
+    window.location.href = `/portal/compare.html?group=${encodeURIComponent(group)}`;
 }
 
 function editDocument(id) {
