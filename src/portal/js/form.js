@@ -19,6 +19,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Set today's date
   document.getElementById('doc-date').value = new Date().toISOString().split('T')[0];
 
+  // Restore remembered "Requested By" name
+  const savedRequestedBy = localStorage.getItem('ww_requested_by');
+  if (savedRequestedBy) {
+    document.getElementById('requested-by').value = savedRequestedBy;
+  }
+
   // Update doc type badge
   const typeBadgeEl = document.getElementById('doc-type-badge');
   typeBadgeEl.textContent = currentDocType;
@@ -32,8 +38,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     quoteRefGroup.style.display = currentDocType === 'PO' ? 'block' : 'none';
   }
 
+  const duplicateDocId = getUrlParam('duplicate');
+
   if (editingDocId) {
     await loadExistingDocument(editingDocId);
+  } else if (duplicateDocId) {
+    await loadExistingDocument(duplicateDocId);
+    // Clear edit state so save creates a new document
+    editingDocId = null;
+    // Assign a fresh doc number
+    await assignDocNumber();
+    // Update title and date for the copy
+    document.getElementById('page-title').textContent = `New ${currentDocType} — Copy`;
+    document.getElementById('doc-date').value = new Date().toISOString().split('T')[0];
   } else if (suppliersParam) {
     // Multi-supplier RFQ mode
     multiSupplierIds = suppliersParam.split(',').filter(Boolean);
@@ -674,6 +691,11 @@ function collectFormData() {
     notes: document.getElementById('notes').value,
     quote_reference: quoteRefEl ? quoteRefEl.value : null,
   };
+
+  // Remember "Requested By" for next time
+  if (docData.requested_by) {
+    localStorage.setItem('ww_requested_by', docData.requested_by);
+  }
 
   const lineItems = [];
   const rows = document.querySelectorAll('.line-item-row');

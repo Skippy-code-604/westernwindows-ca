@@ -99,6 +99,7 @@ function renderResults(docs) {
         <div class="flex gap-1">
           <button class="btn btn-ghost btn-sm" onclick="viewDocument('${esc(doc.id)}')" title="View/Preview">👁️</button>
           <button class="btn btn-ghost btn-sm" onclick="editDocument('${esc(doc.id)}')" title="Edit">✏️</button>
+          <button class="btn btn-ghost btn-sm" onclick="duplicateDocument('${esc(doc.id)}')" title="Copy as New">📋</button>
           <button class="btn btn-ghost btn-sm" onclick="downloadDoc('${esc(doc.id)}')" title="Download PDF">📄</button>
           ${doc.batch_group ? `<button class="btn btn-ghost btn-sm" onclick="compareGroup('${esc(doc.batch_group)}')" title="Compare Quotes">📊</button>` : ''}
           ${doc.doc_type === 'PO' ? `<button class="btn btn-ghost btn-sm" onclick="openConfirmation('${esc(doc.id)}', '${esc(doc.doc_number)}')" title="Order Confirmation">📋</button>` : ''}
@@ -119,6 +120,10 @@ function compareGroup(group) {
 
 function editDocument(id) {
     window.location.href = `/portal/form.html?edit=${id}`;
+}
+
+function duplicateDocument(id) {
+    window.location.href = `/portal/form.html?duplicate=${id}`;
 }
 
 async function downloadDoc(id) {

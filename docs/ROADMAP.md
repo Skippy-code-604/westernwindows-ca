@@ -109,7 +109,7 @@ westernwindows.ca/api/**        → Cloud Functions v2 (Express, Node 22)
 - [ ] **Email response tracking** — Log when supplier replies (manual toggle or email parsing). Show "Awaiting Response" / "Quote Received" badges.
 - [ ] **Document templates** — Save a filled form as a template (e.g. "Standard shower glass RFQ"). Select template on new document to prefill line items.
 - [ ] **Bulk actions on document list** — Checkbox select + "Delete selected" / "Export selected" / "Change status"
-- [ ] **Enhanced PDF** — Company logo on PDF header, better formatting, page numbers, terms & conditions footer
+- [ ] **Enhanced PDF** — Page numbers ("Page 1 of 2"), terms & conditions footer on last page, better line item table spacing
 
 ---
 
