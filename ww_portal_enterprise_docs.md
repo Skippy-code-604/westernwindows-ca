@@ -3,10 +3,10 @@
 ## Enterprise Technical Documentation
 
 **Application:** Western Windows Supplier Portal  
-**Version:** 2.2.0 (Firebase Edition — Multi-Supplier + Drive)  
+**Version:** 2.4.0 (Firebase Edition — Status Pipeline)  
 **Owner:** Western Windows (Windows, Doors & Skylights)  
 **Primary User:** Shane  
-**Document Date:** March 9, 2026  
+**Document Date:** March 10, 2026  
 **Document Author:** Generated from full source-code audit — no code was modified  
 
 ---
@@ -36,7 +36,8 @@
 21. [Company Landing Page](#21-company-landing-page)
 22. [Operational Runbook](#22-operational-runbook)
 23. [Known Gaps & Future Roadmap](#23-known-gaps--future-roadmap)
-24. [Changelog](#24-changelog)
+24. [Roadmap & Project Planning](#24-roadmap--project-planning)
+25. [Changelog](#25-changelog)
 
 ---
 
@@ -54,7 +55,10 @@ The **Western Windows Portal** is an internal web application that replaces manu
 | **RFQ → PO Conversion** | Convert winning quote directly into a Purchase Order with one click |
 | **Google Drive Filing** | PDFs auto-filed into organized folder structure: `Root / YYYY / Month / Project / doc.pdf` |
 | **Quote Price Tracking** | Save received prices on RFQ line items for comparison |
-| **Increased Resources** | Timeout: 60s → 120s, Memory: 256 MiB → 512 MiB |
+| **Dashboard Quick Stats** | Live KPI cards: Drafts Pending, RFQs Sent, POs This Month, PO Value |
+| **Duplicate Document** | "Copy as New" button on history rows — instant document cloning |
+| **Default Requested By** | Remembers last entered name via localStorage |
+| **Status Pipeline** | Expanded: Draft → Sent → Quoted → Ordered → Delivered. Inline dropdown on history, pipeline counts on dashboard |
 
 ---
 
@@ -74,6 +78,9 @@ The **Western Windows Portal** is an internal web application that replaces manu
 | 8 | **Multi-supplier quoting** | Send same RFQ to multiple suppliers, compare responses |
 | 9 | **Price comparison** | Side-by-side quote comparison with cheapest-per-line highlighting |
 | 10 | **Automatic PDF filing** | PDFs auto-filed to Google Drive in organized folder structure |
+| 11 | **Dashboard KPIs** | At-a-glance stats: drafts, sent RFQs, monthly POs, monthly spend |
+| 12 | **Document duplication** | Clone any document as a new draft with one click |
+| 13 | **Status tracking pipeline** | Visual procurement pipeline with inline status changes from document list |
 
 ---
 
@@ -179,10 +186,11 @@ graph TB
 | Technology | Details |
 |------------|---------|
 | HTML5 | Semantic, multi-page (**7 portal pages** + 1 landing page) |
-| Vanilla CSS | **1,268-line** portal design system + 1,631-line landing page styles |
+| Vanilla CSS | **1,268-line** portal design system + **~1,800-line** landing page styles |
 | Vanilla JavaScript | ES modules for Firebase Auth; classic scripts for page logic |
 | Firebase Auth SDK | v11.6.0 via CDN |
 | Google Inter font | 300–800 weights (portal) |
+| Google Montserrat/Open Sans | Landing page fonts |
 | Google Places API | Address autocomplete on form page |
 
 ---
@@ -198,45 +206,52 @@ WW apps/
 ├── firestore.rules               # Firestore security rules (deny all client)
 ├── firestore.indexes.json        # Composite index definitions
 ├── storage.rules                 # Cloud Storage security rules
+│
+├── docs/                         # PROJECT DOCUMENTATION
+│   ├── ROADMAP.md                #   Feature roadmap & task graph (168 lines)
+│   └── plans/                    #   Design documents
+│       └── 2026-03-07-google-drive-export-design.md
 ├── package.json                  # Root manifest (dev scripts only)
 │
 ├── functions/                    # BACKEND — Firebase Cloud Functions
 │   ├── package.json              #   Functions manifest (Node 22)
-│   ├── index.js                  #   Express app + Cloud Function export (111 lines)
+│   ├── index.js                  #   Express app + Cloud Function export
 │   ├── auth.js                   #   Firebase Auth middleware (verifyIdToken)
-│   ├── firestore.js              #   Data access layer — 24 exported functions (284 lines)
+│   ├── firestore.js              #   Data access layer — 25 exported functions (298 lines)
 │   ├── pdf.js                    #   PDF generation engine (275 lines)
 │   ├── drive.js                  #   ★ NEW: Google Drive integration (188 lines)
 │   ├── ww-logo.png               #   Logo for PDF header (optimized)
 │   └── routes/
 │       ├── auth.js               #     Auth routes (login, logout, check)
-│       ├── documents.js          #     Document CRUD + batch + convert (348 lines)
+│       ├── documents.js          #     Document CRUD + batch + convert + status (365 lines)
 │       ├── email.js              #     PDF gen, email send + batch send + Drive (275 lines)
 │       └── suppliers.js          #     Supplier list + lookup
 │
 └── src/                          # FRONTEND — Firebase Hosting
-    ├── index.html                #   Company landing page (896 lines, SEO)
+    ├── index.html                #   Company landing page (~1,400 lines, SEO)
     ├── script.js                 #   Landing page JS (290 lines)
-    ├── styles.css                #   Landing page CSS (1,631 lines)
+    ├── styles.css                #   Landing page CSS (~1,800 lines)
+    ├── logo.png                  #   Company logo
+    ├── nsccr-logo.png            #   Partner/association logo
     └── portal/
         ├── index.html            #   Login — Google Sign-In
-        ├── dashboard.html        #   Dashboard — action cards + recent activity
+        ├── dashboard.html        #   Dashboard — stats + pipeline + action cards (118 lines)
         ├── select-supplier.html  #   Supplier picker — multi-select for RFQ
         ├── form.html             #   Document form + Google Places
         ├── preview.html          #   PDF preview + send + batch send
-        ├── history.html          #   Search/filter + results + confirm modal
+        ├── history.html          #   Search/filter + inline status + results + confirm modal
         ├── compare.html          #   ★ NEW: Quote comparison page
         ├── ww-logo.png           #   Portal logo
         ├── css/
-        │   └── styles.css        #   Portal design system (1,268 lines)
+        │   └── styles.css        #   Portal design system (1,418 lines)
         └── js/
             ├── firebase-auth.js  #   Firebase Auth init + helpers (ES module)
             ├── utils.js          #   apiFetch, toasts, auth check, formatters
-            ├── dashboard.js      #   Dashboard page logic
+            ├── dashboard.js      #   Dashboard — stats + pipeline + recent activity (132 lines)
             ├── supplier.js       #   Supplier selection + multi-select (143 lines)
-            ├── form.js           #   CORE: Form engine (855 lines)
+            ├── form.js           #   CORE: Form engine (877 lines)
             ├── preview.js        #   Preview + batch preview + convert (391 lines)
-            ├── history.js        #   History — search, results, confirm modal
+            ├── history.js        #   History — search, results, status dropdown, duplicate (245 lines)
             └── compare.js        #   ★ NEW: Quote comparison logic (268 lines)
 ```
 
@@ -244,11 +259,12 @@ WW apps/
 
 | Layer | Files | Total Lines |
 |-------|-------|-------------|
-| Backend (`functions/`) | **10** `.js` files | **~1,540** |
-| Frontend HTML | **7** `.html` files | **~630** |
-| Frontend JS | **8** `.js` files | **~2,320** |
-| Frontend CSS | 1 `.css` file | **1,268** |
-| **TOTAL** | **26 source files** | **~5,760 lines** |
+| Backend (`functions/`) | **10** `.js` files | **~1,600** |
+| Frontend HTML | **7** portal `.html` + 1 landing `.html` | **~2,040** |
+| Frontend JS | **8** portal `.js` + 1 landing `.js` | **~2,680** |
+| Frontend CSS | 2 `.css` files | **~3,220** |
+| Docs | 2 `.md` files | **~180** |
+| **TOTAL** | **~30 source files** | **~9,720 lines** |
 
 ---
 
@@ -276,7 +292,7 @@ erDiagram
         string id PK
         string doc_type "RFQ or PO"
         string doc_number "RFQ-2026-0001"
-        string status "Draft Sent Confirmed Cancelled"
+        string status "Draft Sent Quoted Ordered Delivered Confirmed Cancelled"
         string supplier_id FK
         string supplier_name "Denormalized"
         string supplier_type "Denormalized"
@@ -285,6 +301,8 @@ erDiagram
         string drive_url "Google Drive link after filing"
         number total_amount
         string pdf_url
+        timestamp sent_at "First transition to Sent"
+        timestamp delivered_at "Transition to Delivered"
         array line_items "Embedded objects"
     }
 
@@ -295,7 +313,7 @@ erDiagram
     }
 ```
 
-### New Fields (v2.2)
+### New Fields (v2.2–2.4)
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -303,6 +321,8 @@ erDiagram
 | `converted_from_rfq` | string | Source RFQ document ID when PO was created via conversion |
 | `drive_url` | string | Google Drive web view link after auto-filing |
 | `quoted_price` | number | On line items — received price from supplier (for comparison) |
+| `sent_at` | timestamp | Set on first transition to Sent status (v2.4) |
+| `delivered_at` | timestamp | Set on transition to Delivered status (v2.4) |
 
 ### Document Status Lifecycle
 
@@ -310,12 +330,20 @@ erDiagram
 stateDiagram-v2
     [*] --> Draft : Created
     Draft --> Sent : Email sent
+    Sent --> Quoted : Supplier responds with pricing
+    Quoted --> Ordered : PO placed
+    Ordered --> Delivered : Goods received
     Sent --> Confirmed : Order confirmation (PO)
     Draft --> Cancelled : User cancels
     Sent --> Cancelled : User cancels
 
     note right of Draft : RFQ can be converted to PO
+    note right of Quoted : New in v2.4
+    note right of Ordered : New in v2.4
+    note right of Delivered : New in v2.4
 ```
+
+**Valid statuses:** `Draft`, `Sent`, `Quoted`, `Ordered`, `Delivered`, `Confirmed`, `Cancelled`
 
 ---
 
@@ -347,7 +375,8 @@ All endpoints (except health/auth-check) require a Firebase Auth **Bearer token*
 | `/api/documents/:id` | PUT | Update document |
 | `/api/documents/:id` | DELETE | Delete document |
 | `/api/documents/:id/confirmation` | PATCH | Update PO order confirmation |
-| `/api/documents/:id/convert-to-po` | POST | **NEW:** Convert RFQ → PO |
+| `/api/documents/:id/status` | PATCH | **NEW v2.4:** Quick status update (validated enum) |
+| `/api/documents/:id/convert-to-po` | POST | Convert RFQ → PO |
 | `/api/documents/:id/quote-prices` | PATCH | **NEW:** Save received prices on line items |
 | `/api/documents/batch-group/:group` | GET | **NEW:** Get all docs in a batch group |
 | `/api/email/pdf-preview/:id` | GET | Generate PDF (inline) |
@@ -379,6 +408,12 @@ Copies an RFQ into a new PO document with a new PO number. Sets `quote_reference
   ]
 }
 ```
+
+**`PATCH /api/documents/:id/status`** *(New in v2.4)*
+```json
+{ "status": "Quoted" }
+```
+Validated against: `Draft`, `Sent`, `Quoted`, `Ordered`, `Delivered`, `Confirmed`, `Cancelled`. Smart timestamps: sets `sent_at` on first Sent, `delivered_at` on Delivered.
 
 ---
 
@@ -503,12 +538,12 @@ flowchart TD
 | Page | File | Key Features |
 |------|------|-------------|
 | Login | `portal/index.html` | Google Sign-In, auto-redirect |
-| Dashboard | `portal/dashboard.html` | New RFQ/PO cards, recent activity |
+| Dashboard | `portal/dashboard.html` | **Quick stats cards**, **pipeline visualization**, action cards, recent activity |
 | Select Supplier | `portal/select-supplier.html` | **Multi-select for RFQ** (toggle cards), single-select for PO |
-| Document Form | `portal/form.html` | Dynamic fields, multi-supplier support, Google Places |
+| Document Form | `portal/form.html` | Dynamic fields, multi-supplier, **duplicate loading**, Google Places |
 | Preview | `portal/preview.html` | Single + **batch preview**, download, send, **convert to PO** |
-| History | `portal/history.html` | 6-filter search, per-row actions, order confirmation modal |
-| **Compare** | `portal/compare.html` | **NEW:** Side-by-side price comparison, cheapest highlighting |
+| History | `portal/history.html` | 6-filter search, **inline status dropdown**, duplicate 📋, compare, confirm modal |
+| Compare | `portal/compare.html` | Side-by-side price comparison, cheapest highlighting |
 
 ---
 
@@ -607,13 +642,15 @@ flowchart TD
     PO -->|RFQ| NO_PRICE["No pricing"]
 ```
 
-### New in v2.2
+### New in v2.2/v2.3
 
 | Feature | Description |
 |---------|-------------|
 | `multiSupplierIds` / `multiSuppliers` | State variables for multi-supplier mode |
 | `loadMultiSuppliers(ids)` | Fetches all supplier objects, configures form header |
 | Batch save in `saveDraft()` | Calls `/api/documents/batch` when `multiSupplierIds.length > 1` |
+| `?duplicate=ID` param | Loads existing document as a new draft (clears ID, gets new doc number) |
+| Default `requested_by` | Saves last used name to `localStorage`, pre-fills on next form load |
 | Batch preview navigation | After batch save, redirects to `preview.html?batch=id1,id2,...` |
 
 ---
@@ -635,11 +672,14 @@ flowchart TD
 | Gentek | Blair Gracie | Series: 70/80. Glass: BarrierXP variants |
 | Modern Windows | Maegan | Door fields, Reno flange, Series: Vinyl/Aluminum/TB-Alum |
 
+> [!NOTE]
+> The seed script creates 5 suppliers. A 6th supplier may be added manually via Firebase Console (the roadmap references 6 total: 3 glass, 3 windows & doors).
+
 ---
 
 ## 17. CSS Design System
 
-**Portal:** `styles.css` — **1,268 lines** (was 1,024)
+**Portal:** `styles.css` — **1,418 lines** (was 1,268)
 
 ### Brand Palette
 
@@ -653,7 +693,7 @@ flowchart TD
 
 ### Component Library
 
-Buttons (7 variants) · Cards · Badges (6 status/type variants) · Forms (grid layouts) · Tables · Toasts (4 types) · Modal · Spinner · Line Items Editor · Google Places autocomplete · **Supplier multi-select** · **Comparison table** styles
+Buttons (7 variants) · Cards · Badges (7 status/type variants) · Forms (grid layouts) · Tables · Toasts (4 types) · Modal · Spinner · Line Items Editor · Stat cards · **Status select dropdown** (7 color variants) · **Pipeline visualization** (5-stage grid, responsive) · Google Places autocomplete · Supplier multi-select · Comparison table styles
 
 ---
 
@@ -722,7 +762,7 @@ npm run dev                  # Local dev → http://localhost:3000
 
 ## 21. Company Landing Page
 
-**File:** `src/index.html` — 896 lines
+**File:** `src/index.html` — ~1,400 lines (53 KB)
 
 | Section | Features |
 |---------|----------|
@@ -730,9 +770,12 @@ npm run dev                  # Local dev → http://localhost:3000
 | **Schema.org** | `HomeAndConstructionBusiness` structured data |
 | **Hero** | Animated stat counters, CTA buttons |
 | **Services** | Windows, Doors, Skylights |
-| **Gallery** | CSS grid image gallery |
+| **Gallery** | CSS grid image gallery with overlays |
 | **Testimonials** | Carousel with navigation dots |
-| **Contact** | Google Forms integration |
+| **Contact** | Google Forms integration with client-side validation |
+| **Accessibility** | Skip-to-content link, ARIA labels, semantic HTML |
+| **JS** | `script.js` — 290 lines (nav scroll, stats animation, testimonial slider, form validation) |
+| **CSS** | `styles.css` — ~1,800 lines (32 KB) |
 
 ---
 
@@ -768,11 +811,11 @@ Auto-seeds on first request if `suppliers` collection is empty.
 | Feature | Status |
 |---------|--------|
 | Google Sign-In authentication | ✅ |
-| Dashboard with recent activity | ✅ |
-| Supplier selection (5 suppliers, 2 types) | ✅ |
+| Dashboard with **quick stats** + recent activity | ✅ |
+| Supplier selection (5+ suppliers, 2 types) | ✅ |
 | Dynamic forms — glass (3 variants) + window (2 variants) | ✅ |
 | Transaction-safe document numbering | ✅ |
-| Save draft / edit existing | ✅ |
+| Save draft / edit existing / **duplicate** | ✅ |
 | PDF generation (glass + window layouts) | ✅ |
 | PDF preview, download, email send | ✅ |
 | SMTP graceful degradation | ✅ |
@@ -782,12 +825,37 @@ Auto-seeds on first request if `suppliers` collection is empty.
 | CORS domain allowlist | ✅ |
 | Input validation | ✅ |
 | Company landing page with full SEO | ✅ |
-| **Multi-supplier RFQ (batch create)** | ✅ New |
-| **Batch email send** | ✅ New |
-| **Quote comparison page** | ✅ New |
-| **RFQ → PO conversion** | ✅ New |
-| **Quote price tracking** | ✅ New |
-| **Google Drive auto-filing** | ✅ New |
+| Multi-supplier RFQ (batch create) | ✅ |
+| Batch email send | ✅ |
+| Quote comparison page | ✅ |
+| RFQ → PO conversion | ✅ |
+| Quote price tracking | ✅ |
+| Google Drive auto-filing | ✅ |
+| **Dashboard quick stats (4 KPI cards)** | ✅ |
+| **Duplicate document ("Copy as New")** | ✅ |
+| **Default "Requested By" via localStorage** | ✅ |
+| **Status tracking pipeline** | ✅ New |
+| **Inline status dropdown on history** | ✅ New |
+| **Dashboard pipeline visualization** | ✅ New |
+| Google Places API key fix | ✅ Bug fix |
+| convertToPO double-parse fix | ✅ Bug fix |
+
+### 🔲 Known Bugs
+
+| # | Issue | Severity |
+|---|-------|----------|
+| B2 | Firebase Storage not configured for project — `deploy --only storage` fails | 🟡 Medium |
+| B3 | Old batch RFQs missing `batch_group` field — compare button won't appear | 🟡 Medium |
+| B4 | Intermittent deploy cold start timeouts — `googleapis` heavy at import time | 🟡 Medium |
+
+### 🔲 Planned Features (from `docs/ROADMAP.md`)
+
+| Phase | Features |
+|-------|----------|
+| **Phase 2** | ~~Status tracking pipeline~~, email response tracking, document templates, bulk actions, enhanced PDF |
+| **Phase 3** | Supplier price history, monthly spend report, project tracker, CSV/Excel export |
+| **Phase 4** | Supplier portal (read-only), recurring orders, multi-user support, mobile form, notifications |
+| **Phase 5** | QuickBooks sync, inventory awareness, AI suggestions, backup & DR |
 
 ### 🔲 Known Gaps
 
@@ -803,9 +871,72 @@ Auto-seeds on first request if `suppliers` collection is empty.
 
 ---
 
-## 24. Changelog
+## 24. Roadmap & Project Planning
 
-### v2.2.0 (March 9, 2026)
+**File:** `docs/ROADMAP.md` — 177 lines
+
+The project maintains a structured roadmap organized by **ROI vs effort**, not technical domain:
+
+| Phase | Theme | Status |
+|-------|-------|--------|
+| ✅ **Phase 1** | Quick Wins (< 1 hour each) | **Shipped** — stats, duplicate, default fields, bug fixes |
+| 🟡 **Phase 2** | Workflow Improvements | **In Progress** — status pipeline ✅, remaining: templates, bulk actions, enhanced PDF |
+| 📋 **Phase 3** | Business Intelligence | Planned — spend reports, price history, project tracker |
+| 📋 **Phase 4** | Advanced Features | Planned — supplier portal, multi-user, mobile |
+| 📋 **Phase 5** | Integration & Scale | Planned — QuickBooks, inventory, AI |
+
+### Decision Log (from roadmap)
+
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-03-07 | Consolidate landing page + portal on single Firebase project | Simpler infrastructure, one deploy, one domain |
+| 2026-03-07 | JWT auth for Drive (not domain-wide delegation) | More secure, dedicated SA key in secrets |
+| 2026-03-08 | `batch_group` as comma-separated supplier IDs | Simple, no additional collection needed |
+| 2026-03-08 | Compare page uses document IDs from URL params | Stateless — works from batch preview or documents list |
+| 2026-03-09 | Roadmap organized by ROI, not technical domain | Business value drives priority |
+| 2026-03-10 | Status pipeline as inline dropdowns, not separate page | Less clicks = faster daily workflow, fits in existing table |
+
+---
+
+## 25. Changelog
+
+### v2.4.0 (March 10, 2026)
+
+| Change | Details |
+|--------|---------|
+| **Status tracking pipeline** | Expanded enum: Draft → Sent → Quoted → Ordered → Delivered (+ Confirmed, Cancelled) |
+| **Dashboard pipeline visualization** | 5-stage colored grid showing document counts per status |
+| **Inline status dropdown** | Change status from history table without opening the document |
+| **PATCH `/documents/:id/status`** | New API endpoint with validated status enum |
+| **`updateDocumentStatus()`** | New Firestore function with smart timestamps (`sent_at`, `delivered_at`) |
+| **CSS status-select component** | 7 color-coded variants (Draft=yellow, Sent=blue, Quoted=purple, Ordered=amber, Delivered=green, Cancelled=red) |
+| **CSS pipeline-grid component** | 5-column responsive grid with color-coded stage counts |
+| **Cache-busting** | `?v=2` query strings on CSS + JS references |
+| **dashboard.html** | Pipeline visualization added (91 → 118 lines) |
+| **dashboard.js** | Pipeline counts + loading (113 → 132 lines) |
+| **history.js** | Inline status `<select>` in table rows (216 → 245 lines) |
+| **firestore.js** | `updateDocumentStatus()` with smart timestamps (284 → 298 lines) |
+| **documents.js** | PATCH `/status` endpoint (348 → 365 lines) |
+| **styles.css** | Status-select + pipeline components (1,268 → 1,418 lines) |
+| **Branch merged** | `feature/migrate-to-domain` → `master` |
+
+### v2.3.0 (March 9, 2026)
+
+| Change | Details |
+|--------|---------|
+| **Dashboard quick stats** | 4 KPI cards: Drafts Pending, RFQs Sent, POs This Month, PO Value (Month) |
+| **Duplicate document** | 📋 "Copy as New" button on every history row via `?duplicate=ID` param |
+| **Default "Requested By"** | Last used name saved to `localStorage`, pre-fills on new documents |
+| **Bug fix: Places API key** | Added `westernwindows.ca` to allowed referrers in GCP Console |
+| **Bug fix: convertToPO** | Fixed double `res.json()` parse in `preview.js` |
+| **Landing page expansion** | HTML grew to ~1,400 lines (53 KB), CSS to ~1,800 lines (32 KB) |
+| **docs/ directory** | Added `ROADMAP.md` (168 lines) + `plans/` for design documents |
+| **dashboard.html** | Stats grid with 4 stat cards added (71 → 91 lines) |
+| **dashboard.js** | `loadStats()` function added (79 → 113 lines) |
+| **form.js** | Duplicate loading + localStorage requested_by (855 → 877 lines) |
+| **history.js** | `duplicateDocument()` + `compareGroup()` added (206 → 216 lines) |
+
+### v2.2.0 (March 8, 2026)
 
 | Change | Details |
 |--------|---------|
@@ -820,10 +951,6 @@ Auto-seeds on first request if `suppliers` collection is empty.
 | **Memory 256→512 MiB** | Increased for Drive + batch operations |
 | **Timeout 60→120s** | Increased for batch send operations |
 | **3 new secrets** | `DRIVE_ROOT_FOLDER_ID`, `DRIVE_IMPERSONATE_EMAIL`, `DRIVE_SA_KEY` |
-| **CSS 1024→1268 lines** | New styles for multi-select, comparison table |
-| **form.js 764→855 lines** | Multi-supplier state + batch save logic |
-| **preview.js 179→391 lines** | Batch preview + convert to PO + batch send |
-| **supplier.js 61→143 lines** | Multi-select toggle + action bar |
 
 ### v2.1.0 (March 7, 2026)
 
@@ -836,7 +963,7 @@ Auto-seeds on first request if `suppliers` collection is empty.
 | `normalizeLineItems()` | Input validation helper |
 | `escapeHtml()` / `safeFilename()` | Email + download security |
 | Root deps cleaned | Removed legacy packages |
-| Company website | 896-line landing page |
+| Company website | Landing page |
 
 ---
 
