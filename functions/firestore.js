@@ -173,11 +173,25 @@ async function updateDocument(id, docData, lineItems) {
 
 async function updateDocumentStatus(id, status) {
     const a = getAdmin();
-    await getDb().collection('documents').doc(id).update({
+    const update = {
         status,
-        sent_at: a.firestore.FieldValue.serverTimestamp(),
         updated_at: a.firestore.FieldValue.serverTimestamp(),
-    });
+    };
+
+    // Only set sent_at on first transition to Sent
+    if (status === 'Sent') {
+        const doc = await getDocumentById(id);
+        if (doc && !doc.sent_at) {
+            update.sent_at = a.firestore.FieldValue.serverTimestamp();
+        }
+    }
+
+    // Track delivery timestamp
+    if (status === 'Delivered') {
+        update.delivered_at = a.firestore.FieldValue.serverTimestamp();
+    }
+
+    await getDb().collection('documents').doc(id).update(update);
 }
 
 async function updateOrderConfirmation(id, confirmation) {

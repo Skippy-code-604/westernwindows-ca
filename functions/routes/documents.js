@@ -180,7 +180,7 @@ router.put('/:id', async (req, res) => {
 
         // Input validation
         if (!docInput) return res.status(400).json({ error: 'Missing document data' });
-        if (docInput.status && !['Draft', 'Sent', 'Confirmed', 'Cancelled'].includes(docInput.status)) {
+        if (docInput.status && !['Draft', 'Sent', 'Quoted', 'Ordered', 'Delivered', 'Confirmed', 'Cancelled'].includes(docInput.status)) {
             return res.status(400).json({ error: 'Invalid status' });
         }
 
@@ -234,6 +234,23 @@ router.get('/recent/list', async (req, res) => {
         res.json(docs);
     } catch (err) {
         console.error('Error fetching recent:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Quick status update (from document list or pipeline)
+router.patch('/:id/status', async (req, res) => {
+    try {
+        const { status } = req.body;
+        const validStatuses = ['Draft', 'Sent', 'Quoted', 'Ordered', 'Delivered', 'Confirmed', 'Cancelled'];
+        if (!status || !validStatuses.includes(status)) {
+            return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+        }
+        await store.updateDocumentStatus(req.params.id, status);
+        const doc = await store.getDocumentById(req.params.id);
+        res.json(doc);
+    } catch (err) {
+        console.error('Status update error:', err);
         res.status(500).json({ error: err.message });
     }
 });

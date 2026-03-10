@@ -1,7 +1,7 @@
 # WW Portal — Feature Roadmap & Task Graph
 
-> **Last updated:** 2026-03-09
-> **Branch:** `feature/migrate-to-domain`
+> **Last updated:** 2026-03-10
+> **Branch:** `master`
 > **Live at:** [westernwindows.ca/portal](https://westernwindows.ca/portal)
 
 ---
@@ -73,6 +73,14 @@ westernwindows.ca/api/**        → Cloud Functions v2 (Express, Node 22)
 - [x] Security audit + XSS prevention + input validation
 - [x] Node.js 22 runtime
 
+### Status Tracking Pipeline
+- [x] Expanded status enum: Draft → Sent → Quoted → Ordered → Delivered (+ Confirmed, Cancelled)
+- [x] Inline status dropdown on document list (change status without opening doc)
+- [x] Quick PATCH `/documents/:id/status` API endpoint
+- [x] Dashboard pipeline visualization (counts per stage)
+- [x] Color-coded badges per status (purple=Quoted, amber=Ordered, green=Delivered)
+- [x] Smart timestamps (sent_at only on first Sent, delivered_at on Delivered)
+
 ---
 
 ## 🔧 Known Issues & Bugs
@@ -105,7 +113,7 @@ westernwindows.ca/api/**        → Cloud Functions v2 (Express, Node 22)
 
 > Features that save real time on a weekly basis.
 
-- [ ] **Status tracking pipeline** — Visual pipeline: Draft → Sent → Quoted → Ordered → Delivered. Update status from document list without opening preview. Dashboard shows pipeline counts.
+- [x] **Status tracking pipeline** — Visual pipeline: Draft → Sent → Quoted → Ordered → Delivered. Update status from document list without opening preview. Dashboard shows pipeline counts. ✅
 - [ ] **Email response tracking** — Log when supplier replies (manual toggle or email parsing). Show "Awaiting Response" / "Quote Received" badges.
 - [ ] **Document templates** — Save a filled form as a template (e.g. "Standard shower glass RFQ"). Select template on new document to prefill line items.
 - [ ] **Bulk actions on document list** — Checkbox select + "Delete selected" / "Export selected" / "Change status"
@@ -156,6 +164,7 @@ westernwindows.ca/api/**        → Cloud Functions v2 (Express, Node 22)
 | 2026-03-08 | `batch_group` as comma-separated supplier IDs | Simple, no additional collection needed |
 | 2026-03-08 | Compare page uses document IDs from URL params | Stateless — works from batch preview or documents list |
 | 2026-03-09 | Roadmap organized by ROI, not technical domain | Business value drives priority, not engineer preference |
+| 2026-03-10 | Status pipeline as inline dropdowns, not separate page | Less clicks = faster daily workflow, fits in existing table |
 
 ---
 

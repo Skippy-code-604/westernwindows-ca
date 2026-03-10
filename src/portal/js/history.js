@@ -93,7 +93,7 @@ function renderResults(docs) {
       <td style="white-space:nowrap;">${formatDate(doc.created_date)}</td>
       <td>${esc(doc.supplier_name)}</td>
       <td>${esc(doc.project_name) || '—'}</td>
-      <td>${statusBadge(doc.status)}</td>
+      <td>${statusDropdown(doc.id, doc.status)}</td>
       <td style="white-space:nowrap;">${formatCurrency(doc.total_amount)}</td>
       <td>
         <div class="flex gap-1">
@@ -108,6 +108,39 @@ function renderResults(docs) {
       </td>
     </tr>
   `).join('');
+}
+
+function statusDropdown(docId, currentStatus) {
+    const statuses = ['Draft', 'Sent', 'Quoted', 'Ordered', 'Delivered', 'Confirmed', 'Cancelled'];
+    const options = statuses.map(s =>
+        `<option value="${s}" ${s === currentStatus ? 'selected' : ''}>${s}</option>`
+    ).join('');
+    return `<select class="status-select status-select-${currentStatus.toLowerCase()}"
+                    onchange="updateStatus('${esc(docId)}', this.value, this)"
+                    title="Click to change status">${options}</select>`;
+}
+
+async function updateStatus(docId, newStatus, selectEl) {
+    try {
+        const res = await apiFetch(`/documents/${docId}/status`, {
+            method: 'PATCH',
+            body: { status: newStatus },
+        });
+
+        if (!res || !res.ok) {
+            showToast('Error updating status', 'error');
+            searchDocuments(); // Revert by refreshing
+            return;
+        }
+
+        // Update dropdown coloring
+        selectEl.className = `status-select status-select-${newStatus.toLowerCase()}`;
+        showToast(`Status → ${newStatus}`, 'success');
+    } catch (err) {
+        console.error('Status update error:', err);
+        showToast('Error updating status', 'error');
+        searchDocuments();
+    }
 }
 
 function viewDocument(id) {

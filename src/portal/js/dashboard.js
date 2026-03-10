@@ -48,6 +48,19 @@ async function loadStats() {
     document.getElementById('stat-total-value').textContent =
       totalValue > 0 ? `$${totalValue.toLocaleString('en-CA', { minimumFractionDigits: 0 })}` : '$0';
 
+    // Pipeline counts
+    const statusCounts = { Draft: 0, Sent: 0, Quoted: 0, Ordered: 0, Delivered: 0 };
+    for (const d of docs) {
+      if (statusCounts.hasOwnProperty(d.status)) {
+        statusCounts[d.status]++;
+      }
+    }
+    document.getElementById('pipe-draft').textContent = statusCounts.Draft;
+    document.getElementById('pipe-sent').textContent = statusCounts.Sent;
+    document.getElementById('pipe-quoted').textContent = statusCounts.Quoted;
+    document.getElementById('pipe-ordered').textContent = statusCounts.Ordered;
+    document.getElementById('pipe-delivered').textContent = statusCounts.Delivered;
+
   } catch (err) {
     console.error('Error loading stats:', err);
   }
