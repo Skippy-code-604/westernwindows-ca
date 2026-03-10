@@ -15,9 +15,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.location.href = '/portal/history.html';
   });
 
-  // Load recent activity
+  // Load quick stats and recent activity
+  loadStats();
   loadRecentActivity();
 });
+
+async function loadStats() {
+  try {
+    // Fetch all documents (same endpoint history uses, no filter = all)
+    const res = await apiFetch('/documents');
+    if (!res || !res.ok) return;
+    const docs = await res.json();
+
+    // Drafts pending
+    const drafts = docs.filter(d => d.status === 'Draft').length;
+    document.getElementById('stat-drafts').textContent = drafts;
+
+    // RFQs sent (any status except Draft)
+    const rfqsSent = docs.filter(d => d.doc_type === 'RFQ' && d.status === 'Sent').length;
+    document.getElementById('stat-rfqs-sent').textContent = rfqsSent;
+
+    // POs this month
+    const now = new Date();
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    const posThisMonth = docs.filter(d =>
+      d.doc_type === 'PO' && d.created_date >= monthStart
+    );
+    document.getElementById('stat-pos-month').textContent = posThisMonth.length;
+
+    // Total PO value this month
+    const totalValue = posThisMonth.reduce((sum, d) => sum + (d.total_amount || 0), 0);
+    document.getElementById('stat-total-value').textContent =
+      totalValue > 0 ? `$${totalValue.toLocaleString('en-CA', { minimumFractionDigits: 0 })}` : '$0';
+
+  } catch (err) {
+    console.error('Error loading stats:', err);
+  }
+}
 
 async function loadRecentActivity() {
   try {

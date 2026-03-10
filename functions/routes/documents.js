@@ -104,6 +104,61 @@ router.post('/', async (req, res) => {
     }
 });
 
+// Create multiple documents (one per supplier) from the same line items
+router.post('/batch', async (req, res) => {
+    try {
+        const { document: docInput, lineItems, supplier_ids } = req.body;
+
+        if (!docInput) return res.status(400).json({ error: 'Missing document data' });
+        if (!Array.isArray(supplier_ids) || supplier_ids.length === 0) {
+            return res.status(400).json({ error: 'Missing supplier_ids array' });
+        }
+        if (!['RFQ', 'PO'].includes(docInput.doc_type)) {
+            return res.status(400).json({ error: 'Invalid doc_type' });
+        }
+
+        const items = normalizeLineItems(lineItems);
+        const totalAmount = items.reduce((sum, i) => sum + (i.line_total || 0), 0);
+
+        // Fetch all suppliers
+        const suppliers = [];
+        for (const sid of supplier_ids) {
+            const supplier = await store.getSupplierById(sid);
+            if (!supplier) return res.status(404).json({ error: `Supplier not found: ${sid}` });
+            suppliers.push(supplier);
+        }
+
+        // Create one document per supplier, each with its own doc number
+        const created = [];
+        for (const supplier of suppliers) {
+            const docNumber = await store.getNextDocNumber(docInput.doc_type);
+            const docData = {
+                doc_type: docInput.doc_type,
+                doc_number: docNumber,
+                status: 'Draft',
+                created_date: docInput.created_date || new Date().toISOString().split('T')[0],
+                required_date: docInput.required_date || null,
+                supplier_id: supplier.id,
+                project_name: docInput.project_name || null,
+                job_address: docInput.job_address || null,
+                requested_by: docInput.requested_by || 'Shane',
+                shipping_method: docInput.shipping_method || 'Delivery',
+                notes: docInput.notes || null,
+                quote_reference: docInput.quote_reference || null,
+                total_amount: totalAmount,
+                batch_group: supplier_ids.join(','), // Link related docs
+            };
+            const doc = await store.createDocument(docData, items);
+            created.push(doc);
+        }
+
+        res.status(201).json({ documents: created });
+    } catch (err) {
+        console.error('Error creating batch documents:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Get a document by ID
 router.get('/:id', async (req, res) => {
     try {
@@ -203,6 +258,88 @@ router.delete('/:id', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error('Delete error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Convert RFQ to PO
+router.post('/:id/convert-to-po', async (req, res) => {
+    try {
+        const rfq = await store.getDocumentById(req.params.id);
+        if (!rfq) return res.status(404).json({ error: 'Document not found' });
+        if (rfq.doc_type !== 'RFQ') return res.status(400).json({ error: 'Only RFQs can be converted to POs' });
+
+        const lineItems = (rfq.line_items || []).map((item, idx) => ({
+            ...item,
+            line_number: idx + 1,
+            unit_price: item.quoted_price || 0, // Use quoted price if filled in
+            line_total: (item.qty || 1) * (item.quoted_price || 0),
+        }));
+
+        const poNumber = await store.getNextDocNumber('PO');
+        const totalAmount = lineItems.reduce((sum, i) => sum + (i.line_total || 0), 0);
+
+        const poData = {
+            doc_type: 'PO',
+            doc_number: poNumber,
+            status: 'Draft',
+            created_date: new Date().toISOString().split('T')[0],
+            required_date: rfq.required_date || null,
+            supplier_id: rfq.supplier_id,
+            project_name: rfq.project_name || null,
+            job_address: rfq.job_address || null,
+            requested_by: rfq.requested_by || 'Shane',
+            shipping_method: rfq.shipping_method || 'Delivery',
+            notes: rfq.notes || null,
+            quote_reference: rfq.doc_number, // Link back to RFQ
+            converted_from_rfq: rfq.id,
+            total_amount: totalAmount,
+        };
+
+        const items = normalizeLineItems(lineItems);
+        const created = await store.createDocument(poData, items);
+        res.status(201).json({ document: created });
+    } catch (err) {
+        console.error('Error converting to PO:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get all documents in a batch group (for comparison view)
+router.get('/batch-group/:group', async (req, res) => {
+    try {
+        const group = decodeURIComponent(req.params.group);
+        const docs = await store.getDocumentsByBatchGroup(group);
+        res.json(docs);
+    } catch (err) {
+        console.error('Error fetching batch group:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Save received quote prices on an RFQ
+router.patch('/:id/quote-prices', async (req, res) => {
+    try {
+        const { prices } = req.body; // Array of { line_number, quoted_price }
+        if (!Array.isArray(prices)) return res.status(400).json({ error: 'Missing prices array' });
+
+        const doc = await store.getDocumentById(req.params.id);
+        if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+        // Merge quoted prices into existing line items
+        const updatedItems = (doc.line_items || []).map(item => {
+            const priceEntry = prices.find(p => p.line_number === item.line_number);
+            if (priceEntry) {
+                return { ...item, quoted_price: priceEntry.quoted_price || 0 };
+            }
+            return item;
+        });
+
+        await store.updateDocument(req.params.id, { status: doc.status }, updatedItems);
+        const updated = await store.getDocumentById(req.params.id);
+        res.json(updated);
+    } catch (err) {
+        console.error('Error saving quote prices:', err);
         res.status(500).json({ error: err.message });
     }
 });

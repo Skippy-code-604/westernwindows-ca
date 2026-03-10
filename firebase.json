@@ -14,7 +14,25 @@
         ],
         "headers": [
             {
-                "source": "**/*.@(js|css)",
+                "source": "/portal/**/*.@(js|css)",
+                "headers": [
+                    {
+                        "key": "Cache-Control",
+                        "value": "public, max-age=3600"
+                    }
+                ]
+            },
+            {
+                "source": "**/*.@(png|jpg|jpeg|gif|svg|ico)",
+                "headers": [
+                    {
+                        "key": "Cache-Control",
+                        "value": "public, max-age=86400"
+                    }
+                ]
+            },
+            {
+                "source": "/*.@(js|css)",
                 "headers": [
                     {
                         "key": "Cache-Control",
@@ -28,7 +46,7 @@
         {
             "source": "functions",
             "codebase": "default",
-            "runtime": "nodejs20",
+            "runtime": "nodejs22",
             "ignore": [
                 "node_modules",
                 ".git",

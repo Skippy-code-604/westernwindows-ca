@@ -16,6 +16,8 @@ app.disable('x-powered-by');
 const ALLOWED_ORIGINS = [
     'https://western-windows-ca.web.app',
     'https://western-windows-ca.firebaseapp.com',
+    'https://westernwindows.ca',
+    'https://www.westernwindows.ca',
 ];
 if (process.env.LOCAL_DEV === 'true') {
     ALLOWED_ORIGINS.push('http://localhost:3000');
@@ -84,9 +86,9 @@ app.use('/api/email', require('./routes/email'));
 exports.api = onRequest({
     region: 'us-west1',
     invoker: 'public',
-    timeoutSeconds: 60,
-    memory: '256MiB',
-    secrets: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'EMAIL_FROM', 'EMAIL_CC'],
+    timeoutSeconds: 120,
+    memory: '512MiB',
+    secrets: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'EMAIL_FROM', 'EMAIL_CC', 'DRIVE_ROOT_FOLDER_ID', 'DRIVE_IMPERSONATE_EMAIL', 'DRIVE_SA_KEY'],
 }, app);
 
 // --- Local development server ---

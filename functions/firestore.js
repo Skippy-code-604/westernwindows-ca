@@ -121,6 +121,8 @@ async function createDocument(docData, lineItems) {
         quote_reference: docData.quote_reference || null,
         order_confirmation: null,
         total_amount: docData.total_amount || 0,
+        batch_group: docData.batch_group || null,
+        converted_from_rfq: docData.converted_from_rfq || null,
         pdf_url: null,
         sent_at: null,
         created_at: a.firestore.FieldValue.serverTimestamp(),
@@ -194,6 +196,14 @@ async function updatePdfUrl(id, url) {
     });
 }
 
+async function updateDriveUrl(id, url) {
+    const a = getAdmin();
+    await getDb().collection('documents').doc(id).update({
+        drive_url: url,
+        updated_at: a.firestore.FieldValue.serverTimestamp(),
+    });
+}
+
 async function searchDocuments(filters) {
     let query = getDb().collection('documents');
 
@@ -243,6 +253,13 @@ async function deleteDocument(id) {
     await getDb().collection('documents').doc(id).delete();
 }
 
+async function getDocumentsByBatchGroup(group) {
+    const snapshot = await getDb().collection('documents')
+        .where('batch_group', '==', group)
+        .get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
 module.exports = {
     getAdmin,
     getStorage,
@@ -258,7 +275,9 @@ module.exports = {
     updateDocumentStatus,
     updateOrderConfirmation,
     updatePdfUrl,
+    updateDriveUrl,
     searchDocuments,
     getRecentDocuments,
     deleteDocument,
+    getDocumentsByBatchGroup,
 };

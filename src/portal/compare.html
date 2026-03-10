@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Western Windows Portal — Compare Quotes</title>
+    <link rel="stylesheet" href="/portal/css/styles.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <nav class="navbar">
+            <a href="/portal/dashboard.html" class="navbar-brand">
+                <img src="/portal/ww-logo.png" alt="Western Windows" class="navbar-logo">
+                <div class="navbar-title">WESTERN WINDOWS <span>Portal</span></div>
+            </a>
+            <div class="navbar-actions">
+                <button class="btn btn-ghost btn-sm" id="logout-btn">Logout</button>
+            </div>
+        </nav>
+
+        <div class="page-content">
+            <a href="/portal/documents.html" class="back-link">← Back to Documents</a>
+
+            <div class="page-header">
+                <h1 class="page-title" id="page-title">Compare Supplier Quotes</h1>
+                <p class="page-subtitle" id="page-subtitle">Enter received prices to compare</p>
+            </div>
+
+            <!-- Comparison Table -->
+            <div class="card mb-2" id="comparison-card">
+                <div id="comparison-content">
+                    <div class="empty-state">
+                        <div class="spinner"></div>
+                        <p class="mt-1">Loading documents...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="card" id="actions-card" style="display:none;">
+                <h3 class="section-header">Actions</h3>
+                <div class="flex gap-1" style="flex-wrap: wrap;">
+                    <button class="btn btn-primary" id="save-prices-btn">💾 Save Prices</button>
+                    <button class="btn btn-accent" id="convert-winner-btn" style="display:none;">📋 Convert Winner to PO</button>
+                </div>
+                <div id="save-result" class="mt-2 hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+    <script type="module" src="/portal/js/firebase-auth.js"></script>
+    <script src="/portal/js/utils.js"></script>
+    <script src="/portal/js/compare.js"></script>
+</body>
+
+</html>
