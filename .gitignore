@@ -46,3 +46,6 @@ ww Logo.png
 
 # Resized logo temp
 functions/ww-logo-small.png
+
+# Git worktrees
+.worktrees/
