@@ -3,10 +3,10 @@
 ## Enterprise Technical Documentation
 
 **Application:** Western Windows Supplier Portal  
-**Version:** 2.1.0 (Firebase Edition — Post-Repair)  
+**Version:** 2.2.0 (Firebase Edition — Multi-Supplier + Drive)  
 **Owner:** Western Windows (Windows, Doors & Skylights)  
 **Primary User:** Shane  
-**Document Date:** March 7, 2026  
+**Document Date:** March 9, 2026  
 **Document Author:** Generated from full source-code audit — no code was modified  
 
 ---
@@ -22,18 +22,21 @@
 7. [API Reference](#7-api-reference)
 8. [Authentication System](#8-authentication-system)
 9. [PDF Generation Pipeline](#9-pdf-generation-pipeline)
-10. [Email Delivery System](#10-email-delivery-system)
-11. [Frontend Screen Map & User Flows](#11-frontend-screen-map--user-flows)
-12. [Form Engine — Supplier-Aware Logic](#12-form-engine--supplier-aware-logic)
-13. [Supplier Catalog](#13-supplier-catalog)
-14. [CSS Design System](#14-css-design-system)
-15. [Security Model](#15-security-model)
-16. [Deployment & Infrastructure](#16-deployment--infrastructure)
-17. [Environment Configuration](#17-environment-configuration)
-18. [Company Landing Page](#18-company-landing-page)
-19. [Operational Runbook](#19-operational-runbook)
-20. [Known Gaps & Future Roadmap](#20-known-gaps--future-roadmap)
-21. [Changelog — v2.0 → v2.1](#21-changelog--v20--v21)
+10. [Google Drive Integration](#10-google-drive-integration)
+11. [Email Delivery System](#11-email-delivery-system)
+12. [Frontend Screen Map & User Flows](#12-frontend-screen-map--user-flows)
+13. [Multi-Supplier RFQ Workflow](#13-multi-supplier-rfq-workflow)
+14. [Quote Comparison Engine](#14-quote-comparison-engine)
+15. [Form Engine — Supplier-Aware Logic](#15-form-engine--supplier-aware-logic)
+16. [Supplier Catalog](#16-supplier-catalog)
+17. [CSS Design System](#17-css-design-system)
+18. [Security Model](#18-security-model)
+19. [Deployment & Infrastructure](#19-deployment--infrastructure)
+20. [Environment Configuration](#20-environment-configuration)
+21. [Company Landing Page](#21-company-landing-page)
+22. [Operational Runbook](#22-operational-runbook)
+23. [Known Gaps & Future Roadmap](#23-known-gaps--future-roadmap)
+24. [Changelog](#24-changelog)
 
 ---
 
@@ -41,32 +44,21 @@
 
 The **Western Windows Portal** is an internal web application that replaces manual, email-based procurement workflows with a structured, branded system for creating, managing, and sending **Requests for Quote (RFQs)** and **Purchase Orders (POs)** to glass, window, and door suppliers.
 
-The project now also hosts the **public-facing company website** (`src/index.html`) — a premium landing page with SEO, Schema.org structured data, and a Google Forms–backed contact form.
+### What's New in v2.2
 
-### What Changed Since v2.0 (Repair Cycle)
-
-| Aspect | v2.0 | v2.1 (Current) |
-|--------|------|----------------|
-| **Node.js Runtime** | Node 20 | **Node 22** |
-| **firebase-functions** | ^6.3.2 | **^7.1.0** |
-| **CORS** | `origin: true` (permissive) | **Domain allowlist** (localhost + production URLs) |
-| **Document Numbering** | Query highest doc_number | **Firestore transactions** with `counters` collection |
-| **Input Validation** | Minimal | **`normalizeLineItems()` helper** + 400 errors for missing fields |
-| **Email Security** | Basic | **Server-side `escapeHtml()`** + **`safeFilename()`** for headers |
-| **Root Dependencies** | Legacy cruft (better-sqlite3, etc.) | **Cleaned up** — only dev/firebase deps remain |
-| **Company Website** | None | **896-line landing page** with full SEO |
-| **Express Hardening** | Default | **`x-powered-by` disabled** |
-
-> [!IMPORTANT]
-> The legacy `server/` directory has been **completely removed**. All backend logic lives in `functions/`.
+| Feature | Description |
+|---------|-------------|
+| **Multi-Supplier RFQ** | Select 2+ suppliers → one form → creates separate RFQs for each supplier simultaneously |
+| **Batch Send** | Send all RFQs from a multi-supplier group in one click |
+| **Quote Comparison** | Enter received prices side-by-side, auto-highlight cheapest per line, see totals |
+| **RFQ → PO Conversion** | Convert winning quote directly into a Purchase Order with one click |
+| **Google Drive Filing** | PDFs auto-filed into organized folder structure: `Root / YYYY / Month / Project / doc.pdf` |
+| **Quote Price Tracking** | Save received prices on RFQ line items for comparison |
+| **Increased Resources** | Timeout: 60s → 120s, Memory: 256 MiB → 512 MiB |
 
 ---
 
 ## 2. Business Objectives & Success Criteria
-
-### Core Problem
-
-Western Windows staff manually draft procurement documents for glass, windows, and doors from multiple suppliers. Each supplier has different product catalogs, email addresses, and field requirements.
 
 ### Business Goals
 
@@ -79,13 +71,9 @@ Western Windows staff manually draft procurement documents for glass, windows, a
 | 5 | **Document history & search** | Full search/filter with status tracking |
 | 6 | **Supplier-specific intelligence** | Fields adapt per supplier |
 | 7 | **Order confirmation tracking** | POs store supplier confirmation details |
-
-### Success Criteria
-
-- Create a complete RFQ or PO in **under 3 minutes**
-- Every document assigned a unique, sequential number automatically
-- PDFs match Western Windows branding and are emailable with one click
-- All documents searchable by type, supplier, status, date, or free text
+| 8 | **Multi-supplier quoting** | Send same RFQ to multiple suppliers, compare responses |
+| 9 | **Price comparison** | Side-by-side quote comparison with cheapest-per-line highlighting |
+| 10 | **Automatic PDF filing** | PDFs auto-filed to Google Drive in organized folder structure |
 
 ---
 
@@ -100,6 +88,7 @@ graph TB
     DOC_FORM["Document Form"]
     DOC_PREVIEW["Preview and Send"]
     DOC_HISTORY["Document History"]
+    COMPARE["Quote Comparison"]
     FA["firebase-auth.js"]
   end
 
@@ -121,6 +110,7 @@ graph TB
         FIRESTORE_SVC["firestore.js"]
         PDF_SVC["pdf.js jsPDF"]
         EMAIL_SVC["nodemailer SMTP"]
+        DRIVE_SVC["drive.js googleapis"]
       end
     end
 
@@ -131,17 +121,25 @@ graph TB
     end
   end
 
+  subgraph EXTERNAL["External Services"]
+    GMAIL_SMTP["Gmail SMTP"]
+    GOOGLE_DRIVE["Google Drive"]
+    GOOGLE_PLACES["Google Places API"]
+  end
+
   CLIENT -->|"fetch + Bearer token"| REWRITE
-  CLIENT -->|"GET static files"| STATIC
   LOGIN -->|"signInWithPopup"| FIREBASE_AUTH
   REWRITE -->|"Proxy"| EXPRESS
   EXPRESS --> AUTH_MW --> ROUTES
   R_DOC --> FIRESTORE_SVC
   R_EMAIL --> PDF_SVC
   R_EMAIL --> EMAIL_SVC
+  R_EMAIL --> DRIVE_SVC
   FIRESTORE_SVC --> FIRESTORE_DB
   PDF_SVC --> CLOUD_STORAGE
-  EMAIL_SVC -->|"SMTP TLS"| GMAIL_SMTP["Gmail SMTP"]
+  EMAIL_SVC -->|"SMTP TLS"| GMAIL_SMTP
+  DRIVE_SVC -->|"Service Account"| GOOGLE_DRIVE
+  DOC_FORM -->|"Places API"| GOOGLE_PLACES
 ```
 
 ### Key Architectural Decisions
@@ -151,8 +149,9 @@ graph TB
 3. **Firebase Hosting rewrites** — `/api/**` proxies to Cloud Functions (same-origin)
 4. **Firebase Auth** — Google Sign-In popup; ID tokens as Bearer headers
 5. **Multi-page application** — separate `.html` files; no SPA framework
-6. **Lazy initialization** — `jsPDF`, `nodemailer`, `firebase-admin` loaded lazily to avoid cold-start timeouts
+6. **Lazy initialization** — `jsPDF`, `nodemailer`, `googleapis` loaded lazily to avoid cold-start timeouts
 7. **Transaction-safe numbering** — `counters` collection ensures no duplicate doc numbers
+8. **Batch document creation** — single API call creates one doc per supplier with linked `batch_group`
 
 ---
 
@@ -164,26 +163,26 @@ graph TB
 |---------|---------|---------|
 | `express` | ^4.21.0 | HTTP routing & middleware |
 | `firebase-admin` | ^13.4.0 | Firestore, Auth, Cloud Storage admin |
-| `firebase-functions` | **^7.1.0** | Cloud Functions v2 HTTP trigger |
+| `firebase-functions` | ^7.1.0 | Cloud Functions v2 HTTP trigger |
 | `jspdf` | ^4.2.0 | Server-side PDF generation |
 | `jspdf-autotable` | ^5.0.7 | Table plugin for jsPDF |
 | `nodemailer` | ^8.0.1 | SMTP email transport |
+| `googleapis` | **^171.4.0** | **Google Drive API** (v2.2 — new) |
 | `cors` | ^2.8.6 | CORS with domain allowlist |
 | `cookie-session` | ^2.1.0 | Lightweight session (legacy compat) |
 | `dotenv` | ^17.3.1 | Local dev `.env` parsing |
 
-**Runtime:** Node.js **22** · **Region:** us-west1 · **Memory:** 256 MiB · **Timeout:** 60s
+**Runtime:** Node.js 22 · **Region:** us-west1 · **Memory:** **512 MiB** · **Timeout:** **120s**
 
 ### Frontend
 
 | Technology | Details |
 |------------|---------|
-| HTML5 | Semantic, multi-page (6 portal pages + 1 landing page) |
-| Vanilla CSS | 1,024-line portal design system + 1,631-line landing page styles |
+| HTML5 | Semantic, multi-page (**7 portal pages** + 1 landing page) |
+| Vanilla CSS | **1,268-line** portal design system + 1,631-line landing page styles |
 | Vanilla JavaScript | ES modules for Firebase Auth; classic scripts for page logic |
 | Firebase Auth SDK | v11.6.0 via CDN |
 | Google Inter font | 300–800 weights (portal) |
-| Google Montserrat/Open Sans | Landing page fonts |
 | Google Places API | Address autocomplete on form page |
 
 ---
@@ -203,41 +202,53 @@ WW apps/
 │
 ├── functions/                    # BACKEND — Firebase Cloud Functions
 │   ├── package.json              #   Functions manifest (Node 22)
-│   ├── index.js                  #   Express app + Cloud Function export
+│   ├── index.js                  #   Express app + Cloud Function export (111 lines)
 │   ├── auth.js                   #   Firebase Auth middleware (verifyIdToken)
-│   ├── firestore.js              #   Data access layer — all Firestore ops
-│   ├── pdf.js                    #   PDF generation engine (jsPDF)
+│   ├── firestore.js              #   Data access layer — 24 exported functions (284 lines)
+│   ├── pdf.js                    #   PDF generation engine (275 lines)
+│   ├── drive.js                  #   ★ NEW: Google Drive integration (188 lines)
 │   ├── ww-logo.png               #   Logo for PDF header (optimized)
 │   └── routes/
 │       ├── auth.js               #     Auth routes (login, logout, check)
-│       ├── documents.js          #     Document CRUD + search + normalizeLineItems
-│       ├── email.js              #     PDF gen, download, email send + escapeHtml
+│       ├── documents.js          #     Document CRUD + batch + convert (348 lines)
+│       ├── email.js              #     PDF gen, email send + batch send + Drive (275 lines)
 │       └── suppliers.js          #     Supplier list + lookup
 │
 └── src/                          # FRONTEND — Firebase Hosting
     ├── index.html                #   Company landing page (896 lines, SEO)
     ├── script.js                 #   Landing page JS (290 lines)
     ├── styles.css                #   Landing page CSS (1,631 lines)
-    ├── logo.png                  #   Landing page logo
     └── portal/
         ├── index.html            #   Login — Google Sign-In
         ├── dashboard.html        #   Dashboard — action cards + recent activity
-        ├── select-supplier.html  #   Supplier picker — glass vs window
+        ├── select-supplier.html  #   Supplier picker — multi-select for RFQ
         ├── form.html             #   Document form + Google Places
-        ├── preview.html          #   PDF preview + send + download
+        ├── preview.html          #   PDF preview + send + batch send
         ├── history.html          #   Search/filter + results + confirm modal
+        ├── compare.html          #   ★ NEW: Quote comparison page
         ├── ww-logo.png           #   Portal logo
         ├── css/
-        │   └── styles.css        #   Portal design system (1,024 lines)
+        │   └── styles.css        #   Portal design system (1,268 lines)
         └── js/
             ├── firebase-auth.js  #   Firebase Auth init + helpers (ES module)
             ├── utils.js          #   apiFetch, toasts, auth check, formatters
             ├── dashboard.js      #   Dashboard page logic
-            ├── supplier.js       #   Supplier selection logic
-            ├── form.js           #   CORE: Form engine (764 lines)
-            ├── preview.js        #   Preview page — PDF, download, send
-            └── history.js        #   History — search, results, confirm modal
+            ├── supplier.js       #   Supplier selection + multi-select (143 lines)
+            ├── form.js           #   CORE: Form engine (855 lines)
+            ├── preview.js        #   Preview + batch preview + convert (391 lines)
+            ├── history.js        #   History — search, results, confirm modal
+            └── compare.js        #   ★ NEW: Quote comparison logic (268 lines)
 ```
+
+### Source Code Statistics
+
+| Layer | Files | Total Lines |
+|-------|-------|-------------|
+| Backend (`functions/`) | **10** `.js` files | **~1,540** |
+| Frontend HTML | **7** `.html` files | **~630** |
+| Frontend JS | **8** `.js` files | **~2,320** |
+| Frontend CSS | 1 `.css` file | **1,268** |
+| **TOTAL** | **26 source files** | **~5,760 lines** |
 
 ---
 
@@ -264,11 +275,14 @@ erDiagram
     documents {
         string id PK
         string doc_type "RFQ or PO"
-        string doc_number "e.g. RFQ-2026-0001"
+        string doc_number "RFQ-2026-0001"
         string status "Draft Sent Confirmed Cancelled"
         string supplier_id FK
         string supplier_name "Denormalized"
         string supplier_type "Denormalized"
+        string batch_group "Comma-separated supplier IDs linking related docs"
+        string converted_from_rfq "RFQ doc ID if this PO was converted"
+        string drive_url "Google Drive link after filing"
         number total_amount
         string pdf_url
         array line_items "Embedded objects"
@@ -281,54 +295,14 @@ erDiagram
     }
 ```
 
-### Document Number Generation (Transaction-Safe)
+### New Fields (v2.2)
 
-```
-Firestore Transaction:
-  1. Read counters/{TYPE} document
-  2. If year changed → reset sequence to 0
-  3. Increment sequence
-  4. Write back to counters/{TYPE}
-  5. Return "{TYPE}-{YEAR}-{SEQUENCE zero-padded to 4}"
-```
-
-> [!IMPORTANT]
-> This replaced the old approach of querying highest existing doc_number, which was susceptible to race conditions.
-
-### Line Item Schema (Embedded Object)
-
-| Field | Type | Used By | Description |
-|-------|------|---------|-------------|
-| `line_number` | number | All | Sequential position (1-based) |
-| `qty` | number | All | Quantity (default: 1) |
-| `width` / `height` | string | All | Dimensions |
-| `glass_type` | string | Glass | Tempered, Laminated, Annealed, Heat-Strengthened |
-| `thickness` | string | Glass | 3mm–12mm |
-| `tint_coating` | string | Glass | Clear, Low-E, Grey/Bronze/Green Tint, Reflective |
-| `shape` | string | Glass | Rectangle, Circle, Arch, Triangle, Custom |
-| `edge_work` | string | Glass | Flat/Pencil Polish, Beveled, Seamed, None |
-| `is_igu` | boolean | Glass | Insulated Glass Unit toggle |
-| `igu_config` | string | Glass | Freeform IGU makeup (textarea) |
-| `spacer_type` | string | Glass | SuperSpacer, Aluminum, Stainless Steel, Warm-Edge |
-| `gas_fill` | string | Glass | Air, Argon, Krypton |
-| `product_category` | string | OBE/Hartung | 11 options (IGU, Tempered, Shower, etc.) |
-| `application_type` | string | Garibaldi | 6 options (Structural, Architectural, etc.) |
-| `product_type` | string | Window | Single/Double Hung, Slider, Casement, etc. |
-| `series` | string | Window | Gentek: 70/80. Modern: Vinyl/Aluminum/TB-Alum |
-| `frame_color` | string | Window | White, Almond, Driftwood, Commercial Brown, Black |
-| `frame_type` | string | Window | Nail Flange, Stucco/Reno Flange, Block Frame |
-| `reno_flange_size` | string | Modern | When frame_type = Stucco/Reno Flange |
-| `glass_package` | string | Window | Gentek: BarrierXP variants. Others: Standard/Low-E/Double/Triple |
-| `grid_pattern` / `grid_type` | string | Window | Colonial/Prairie/Custom, GBG/SDL/Snap-In |
-| `screen` | string | Window | Full, Half, None |
-| `hardware_color` | string | Window | Match Frame, White, Black, Brass |
-| `operating_style` | string | Window | Panel config: XO, OX, XOO, XOOX, etc. |
-| `tempered` | boolean | Both | Tempered glass checkbox |
-| `energy_star` | boolean | Window | Energy Star certification |
-| `door_type/material/style` | string | Modern | Entry/Patio/French/Folding, Fiberglass/Steel/Wood |
-| `unit_price` | number | PO only | Per-unit price |
-| `line_total` | number | PO only | qty × unit_price |
-| `notes` | string | All | Free-text |
+| Field | Type | Description |
+|-------|------|-------------|
+| `batch_group` | string | Comma-separated supplier IDs linking multi-supplier RFQ docs |
+| `converted_from_rfq` | string | Source RFQ document ID when PO was created via conversion |
+| `drive_url` | string | Google Drive web view link after auto-filing |
+| `quoted_price` | number | On line items — received price from supplier (for comparison) |
 
 ### Document Status Lifecycle
 
@@ -339,6 +313,8 @@ stateDiagram-v2
     Sent --> Confirmed : Order confirmation (PO)
     Draft --> Cancelled : User cancels
     Sent --> Cancelled : User cancels
+
+    note right of Draft : RFQ can be converted to PO
 ```
 
 ---
@@ -359,31 +335,50 @@ All endpoints (except health/auth-check) require a Firebase Auth **Bearer token*
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/health` | GET | Health check (no auth) |
-| `/api/auth/check` | GET | Returns `{ authenticated, email?, name? }` |
-| `/api/auth/login` | POST | Legacy session login |
-| `/api/auth/logout` | POST | Clear session |
+| `/api/auth/check` | GET | Auth status check |
 | `/api/suppliers` | GET | List all (optional `?type=glass\|window`) |
 | `/api/suppliers/:id` | GET | Single supplier |
-| `/api/documents` | GET | Search with filters: `doc_type`, `supplier_id`, `status`, `search`, `date_from`, `date_to` |
-| `/api/documents` | POST | Create doc + line items. Body: `{ document, lineItems }` |
-| `/api/documents/next-number/:type` | GET | Next sequential number (transaction-safe) |
+| `/api/documents` | GET | Search with filters |
+| `/api/documents` | POST | Create single document |
+| `/api/documents/batch` | POST | **NEW:** Create one doc per supplier (multi-supplier RFQ) |
+| `/api/documents/next-number/:type` | GET | Next sequential number |
 | `/api/documents/recent/list` | GET | 10 most recent (dashboard) |
-| `/api/documents/:id` | GET | Get by ID with line items |
-| `/api/documents/:id` | PUT | Update doc + replace line items |
+| `/api/documents/:id` | GET | Get by ID |
+| `/api/documents/:id` | PUT | Update document |
 | `/api/documents/:id` | DELETE | Delete document |
 | `/api/documents/:id/confirmation` | PATCH | Update PO order confirmation |
+| `/api/documents/:id/convert-to-po` | POST | **NEW:** Convert RFQ → PO |
+| `/api/documents/:id/quote-prices` | PATCH | **NEW:** Save received prices on line items |
+| `/api/documents/batch-group/:group` | GET | **NEW:** Get all docs in a batch group |
 | `/api/email/pdf-preview/:id` | GET | Generate PDF (inline) |
 | `/api/email/pdf/:id` | GET | Generate PDF (download) |
-| `/api/email/send/:id` | POST | Generate PDF → Storage → Email → status "Sent" |
+| `/api/email/send/:id` | POST | Generate PDF → Storage → Drive → Email |
+| `/api/email/send-batch` | POST | **NEW:** Send multiple docs in one call |
 
-### Input Validation (v2.1)
+### New Endpoints Detail
 
-`POST /api/documents` now validates:
-- `document` object required
-- `doc_type` must be `RFQ` or `PO`
-- `supplier_id` required
-- `doc_number` required
-- Line items normalized via `normalizeLineItems()` with safe defaults
+**`POST /api/documents/batch`**
+```json
+{
+  "document": { "doc_type": "RFQ", "project_name": "...", ... },
+  "lineItems": [...],
+  "supplier_ids": ["id1", "id2", "id3"]
+}
+```
+Creates one RFQ per supplier, each with its own doc number. All linked via `batch_group`.
+
+**`POST /api/documents/:id/convert-to-po`**
+Copies an RFQ into a new PO document with a new PO number. Sets `quote_reference` to the original RFQ number and `converted_from_rfq` to the RFQ's ID. Copies all line items including `quoted_price` as `unit_price`.
+
+**`PATCH /api/documents/:id/quote-prices`**
+```json
+{
+  "prices": [
+    { "line_number": 1, "quoted_price": 125.50 },
+    { "line_number": 2, "quoted_price": 89.00 }
+  ]
+}
+```
 
 ---
 
@@ -395,25 +390,16 @@ sequenceDiagram
     participant Browser
     participant FBAuth as Firebase Auth
     participant API as Cloud Function
-    participant FBAdmin as Firebase Admin
 
     User->>Browser: Click Sign in with Google
     Browser->>FBAuth: signInWithPopup(GoogleAuthProvider)
-    FBAuth-->>Browser: User credential + ID token
-
-    Note over Browser: On each API call
-    Browser->>FBAuth: user.getIdToken()
+    FBAuth-->>Browser: ID token
     Browser->>API: fetch with Authorization Bearer token
-    API->>FBAdmin: admin.auth().verifyIdToken(token)
-    FBAdmin-->>API: Decoded token
+    API->>API: admin.auth().verifyIdToken(token)
     API-->>Browser: JSON response
-
-    Note over Browser: On 401 response
-    Browser->>FBAuth: signOut()
-    Browser->>Browser: Redirect to /portal/
 ```
 
-**Key files:** `firebase-auth.js` (frontend ES module), `auth.js` (backend middleware), `utils.js` (`apiFetch()` auto-injects Bearer token)
+**Key files:** `firebase-auth.js` (frontend), `auth.js` (backend middleware), `utils.js` (`apiFetch()` auto-injects Bearer token)
 
 ---
 
@@ -429,72 +415,178 @@ sequenceDiagram
 | **Notes** | Free-text special instructions |
 | **Footer** | Company contact info |
 
-**Security (v2.1):** Filenames sanitized via `safeFilename()` for `Content-Disposition` headers.
+---
+
+## 10. Google Drive Integration
+
+**File:** `functions/drive.js` — 188 lines (new in v2.2)
+
+### Folder Structure
+
+```
+{Root Folder} /
+  └── 2026 /
+      └── March /
+          └── Project Name /
+              ├── RFQ-2026-0001 — Gentek.pdf
+              └── PO-2026-0002 — Modern.pdf
+```
+
+### How It Works
+
+1. On email send, after PDF is generated and saved to Cloud Storage
+2. `uploadPDF()` is called with the PDF buffer and document metadata
+3. Builds folder path: `Root → Year → Month → Project Name`
+4. Each folder is created if it doesn't exist (`findOrCreateFolder()` with in-memory caching)
+5. Checks for existing file (avoids duplicates on re-send) — updates if found, creates if not
+6. Returns Google Drive `webViewLink` → saved to document as `drive_url`
+
+### Authentication
+
+- Uses a **service account** with **domain-wide delegation**
+- Service account key stored as `DRIVE_SA_KEY` secret (JSON)
+- Impersonates a workspace user via `DRIVE_IMPERSONATE_EMAIL`
+- Root folder ID specified via `DRIVE_ROOT_FOLDER_ID` secret
+
+### Graceful Degradation
+
+If `DRIVE_ROOT_FOLDER_ID` is not set, Drive upload is silently skipped. If the Drive API call fails, it logs a warning but does not block the email send.
 
 ---
 
-## 10. Email Delivery System
+## 11. Email Delivery System
 
 1. Generate PDF → buffer
 2. Save to Cloud Storage: `portal/pdfs/{doc_number}.pdf`
-3. Update Firestore with `pdf_url`
-4. Check SMTP config — if unconfigured: graceful degradation (PDF saved, email skipped)
-5. Create Nodemailer transporter (Gmail SMTP, STARTTLS)
-6. Send with HTML body (server-side `escapeHtml()` on all user content) + PDF attachment
-7. Update status to `Sent`
+3. **Auto-file to Google Drive** (new in v2.2) → save `drive_url`
+4. Check SMTP config — if unconfigured: graceful degradation
+5. Send with HTML body (`escapeHtml()` on all user content) + PDF attachment
+6. Update status to `Sent`
 
-| Field | Value |
-|-------|-------|
-| **From** | `"Western Windows" <info@westernwindows.ca>` |
-| **To** | Supplier's `quote_email` (RFQ) or `order_email` (PO) |
-| **CC** | `shane@westernwindows.ca` |
-| **Subject** | `{Request for Quote | Purchase Order}: {doc_number} — {project_name}` |
+### Batch Send (`POST /api/email/send-batch`)
+
+Accepts `{ ids: ["id1", "id2", ...] }`. Iterates over each document, generates PDF, files to Drive, sends email. Returns per-document success/failure results.
 
 ---
 
-## 11. Frontend Screen Map & User Flows
+## 12. Frontend Screen Map & User Flows
 
 ```mermaid
 flowchart TD
     A["Login"] -->|"Google Sign-In"| B["Dashboard"]
-    B -->|"New RFQ"| C["Select Supplier ?type=RFQ"]
-    B -->|"New PO"| D["Select Supplier ?type=PO"]
+    B -->|"New RFQ"| C["Select Supplier"]
+    B -->|"New PO"| D["Select Supplier"]
     B -->|"Search History"| H["History"]
 
-    C -->|"Pick supplier"| E["Document Form"]
+    C -->|"Single supplier"| E["Document Form"]
+    C -->|"Multi-select 2+"| E2["Form - Multi-Supplier"]
     D -->|"Pick supplier"| F["Document Form"]
 
-    E -->|"Save Draft"| E
-    E -->|"Preview"| G["Preview"]
-    F -->|"Save Draft"| F
+    E -->|"Preview"| G["Preview - Single"]
+    E2 -->|"Save + Preview"| G2["Preview - Batch"]
     F -->|"Preview"| G
 
-    G -->|"Edit"| E2["Edit Form"]
-    G -->|"Download PDF"| G
-    G -->|"Send to Supplier"| G
+    G -->|"Send"| G
+    G -->|"Convert to PO"| F2["New PO Form"]
+    G2 -->|"Send All"| G2
+    G2 -->|"Compare Quotes"| CMP["Compare Page"]
+
+    CMP -->|"Convert Winner to PO"| F2
 
     H -->|"View"| G
-    H -->|"Edit"| E2
-    H -->|"Delete"| H
-    H -->|"Confirm PO"| H
+    H -->|"Edit"| E
+    H -->|"Compare Group"| CMP
 ```
 
-### Pages
+### Pages (7 portal + 1 landing)
 
 | Page | File | Key Features |
 |------|------|-------------|
-| Login | `portal/index.html` | Google Sign-In popup, auto-redirect if authenticated |
-| Dashboard | `portal/dashboard.html` | New RFQ/PO cards, recent activity table |
-| Select Supplier | `portal/select-supplier.html` | Glass vs Window supplier cards |
-| Document Form | `portal/form.html` | Dynamic supplier-aware fields, Google Places autocomplete |
-| Preview | `portal/preview.html` | PDF iframe preview, download, send-to-supplier |
+| Login | `portal/index.html` | Google Sign-In, auto-redirect |
+| Dashboard | `portal/dashboard.html` | New RFQ/PO cards, recent activity |
+| Select Supplier | `portal/select-supplier.html` | **Multi-select for RFQ** (toggle cards), single-select for PO |
+| Document Form | `portal/form.html` | Dynamic fields, multi-supplier support, Google Places |
+| Preview | `portal/preview.html` | Single + **batch preview**, download, send, **convert to PO** |
 | History | `portal/history.html` | 6-filter search, per-row actions, order confirmation modal |
+| **Compare** | `portal/compare.html` | **NEW:** Side-by-side price comparison, cheapest highlighting |
 
 ---
 
-## 12. Form Engine — Supplier-Aware Logic
+## 13. Multi-Supplier RFQ Workflow
 
-`form.js` — **764 lines**, the most complex component.
+This is the flagship new feature in v2.2. The complete flow:
+
+```mermaid
+flowchart TD
+    A["Select Supplier Page"] -->|"Click to toggle"| B["Multi-Select Mode"]
+    B -->|"2+ suppliers selected"| C["Multi-Select Bar appears"]
+    C -->|"Start Multi-Supplier RFQ"| D["Form - suppliers param"]
+    D -->|"Fill form once"| E["Save creates batch"]
+    E -->|"POST /api/documents/batch"| F["One doc per supplier created"]
+    F --> G["Batch Preview page"]
+    G -->|"Send All"| H["POST /api/email/send-batch"]
+    G -->|"Compare Quotes"| I["Compare page"]
+    I -->|"Enter received prices"| J["Side-by-side table"]
+    J -->|"Auto-highlights cheapest"| K["Convert Winner to PO"]
+    K -->|"POST /:id/convert-to-po"| L["New PO created"]
+```
+
+### Supplier Selection (Multi-Select)
+
+- **RFQ mode:** Clicking a supplier card toggles selection (`.supplier-selected` class)
+- **PO mode:** Clicking navigates directly to form (single-select)
+- **Multi-select bar:** Appears when 1+ suppliers selected; shows count and "Start Multi-Supplier RFQ" button
+- **Single selected:** Uses normal single-supplier flow
+- **Multiple selected:** Passes comma-separated IDs as `?suppliers=id1,id2,id3`
+
+### Form (Multi-Supplier Aware)
+
+- `form.js` detects `?suppliers=` param and loads all supplier objects
+- Displays supplier chips/list in header
+- Uses **first supplier** to determine field types (all suppliers in a multi-select should be same type)
+- On save: calls `POST /api/documents/batch` instead of regular create
+
+### Batch Preview
+
+- `preview.js` detects `?batch=id1,id2,id3` param
+- Loads all documents and shows them in a tabbed/listed view
+- **Send All** button calls `POST /api/email/send-batch`
+- **Compare Quotes** button navigates to comparison page
+
+---
+
+## 14. Quote Comparison Engine
+
+**Files:** `compare.html` (61 lines) + `compare.js` (268 lines)
+
+### How It Works
+
+1. Page loads documents by `?group=` (batch group) or `?ids=id1,id2` (explicit IDs)
+2. Renders a comparison table: columns = suppliers, rows = line items
+3. User enters received `quoted_price` for each line item per supplier
+4. **Auto-calculates** totals per supplier column
+5. **Auto-highlights** cheapest price per line (green)
+6. Shows overall cheapest supplier
+7. **Save Prices** button: `PATCH /api/documents/:id/quote-prices` for each doc
+8. **Convert Winner to PO** button: `POST /api/documents/:id/convert-to-po`
+
+### Key Functions
+
+| Function | Purpose |
+|----------|---------|
+| `loadByBatchGroup(group)` | Fetch all docs in a batch group |
+| `loadByIds(ids)` | Fetch docs by explicit ID list |
+| `renderComparison()` | Build the comparison table dynamically |
+| `updateTotals()` | Recalculate line totals and grand totals on price input |
+| `highlightCheapestPerLine()` | Green-highlight lowest price per row |
+| `savePrices()` | Persist entered prices to Firestore |
+| `convertWinnerToPO(docId)` | Convert the cheapest supplier's RFQ to a PO |
+
+---
+
+## 15. Form Engine — Supplier-Aware Logic
+
+`form.js` — **855 lines** (was 764), the most complex component.
 
 ```mermaid
 flowchart TD
@@ -505,30 +597,28 @@ flowchart TD
     GLASS --> G_CHECK{Which Supplier?}
     G_CHECK -->|"OBE or Hartung"| G_CAT["+ Product Category (11 options)"]
     G_CHECK -->|"Garibaldi"| G_APP["+ Application Type (6 options)"]
-    G_CHECK -->|"Other glass"| G_STD["Standard glass fields"]
 
     WINDOW --> W_CHECK{Which Supplier?}
-    W_CHECK -->|"Gentek"| W_GEN["Series 70/80 + BarrierXP glass packages"]
-    W_CHECK -->|"Modern"| W_MOD["Door fields + Reno flange size toggle"]
-    W_CHECK -->|"Other"| W_STD["Standard window fields"]
+    W_CHECK -->|"Gentek"| W_GEN["Series 70/80 + BarrierXP"]
+    W_CHECK -->|"Modern"| W_MOD["Door fields + Reno flange"]
 
     GLASS & WINDOW --> PO{Doc Type?}
     PO -->|PO| PRICE["+ Unit Price + Line Total"]
     PO -->|RFQ| NO_PRICE["No pricing"]
 ```
 
-### Interactive Behaviors
+### New in v2.2
 
-| Feature | Trigger | Effect |
-|---------|---------|--------|
-| IGU toggle | Checkbox | Shows IGU config textarea + spacer + gas fill |
-| Price calc | qty/price input | Real-time line total |
-| Frame type | "Stucco/Reno Flange" selected | Shows reno flange size (Modern) |
-| Line add/remove | Buttons | Dynamic rows + auto-renumber |
+| Feature | Description |
+|---------|-------------|
+| `multiSupplierIds` / `multiSuppliers` | State variables for multi-supplier mode |
+| `loadMultiSuppliers(ids)` | Fetches all supplier objects, configures form header |
+| Batch save in `saveDraft()` | Calls `/api/documents/batch` when `multiSupplierIds.length > 1` |
+| Batch preview navigation | After batch save, redirects to `preview.html?batch=id1,id2,...` |
 
 ---
 
-## 13. Supplier Catalog
+## 16. Supplier Catalog
 
 ### Glass Suppliers
 
@@ -547,9 +637,9 @@ flowchart TD
 
 ---
 
-## 14. CSS Design System
+## 17. CSS Design System
 
-**Portal:** `styles.css` — 1,024 lines
+**Portal:** `styles.css` — **1,268 lines** (was 1,024)
 
 ### Brand Palette
 
@@ -563,38 +653,40 @@ flowchart TD
 
 ### Component Library
 
-Buttons (7 variants) · Cards · Badges (6 status/type variants) · Forms (grid layouts) · Tables · Toasts (4 types) · Modal · Spinner · Line Items Editor · Google Places autocomplete styling
+Buttons (7 variants) · Cards · Badges (6 status/type variants) · Forms (grid layouts) · Tables · Toasts (4 types) · Modal · Spinner · Line Items Editor · Google Places autocomplete · **Supplier multi-select** · **Comparison table** styles
 
 ---
 
-## 15. Security Model
+## 18. Security Model
 
 | Aspect | Implementation | Rating |
 |--------|---------------|--------|
 | **Authentication** | Firebase Auth + Google Sign-In | ✅ |
 | **Token Verification** | `verifyIdToken()` on every API call | ✅ |
-| **CORS** | **Domain allowlist** (localhost, `.web.app`, `.firebaseapp.com`) | ✅ Improved |
+| **CORS** | Domain allowlist (localhost, `.web.app`, `.firebaseapp.com`, `westernwindows.ca`) | ✅ |
 | **Firestore Rules** | `allow read, write: if false` | ✅ |
 | **XSS (Frontend)** | `esc()` HTML-encodes all user content | ✅ |
-| **XSS (Email)** | **Server-side `escapeHtml()`** on email templates | ✅ New |
-| **Content-Disposition** | **`safeFilename()`** sanitizes filenames | ✅ New |
-| **Express Hardening** | **`x-powered-by` disabled** | ✅ New |
-| **Input Validation** | `normalizeLineItems()` + 400 errors for missing fields | ✅ Improved |
+| **XSS (Email)** | Server-side `escapeHtml()` on email templates | ✅ |
+| **Content-Disposition** | `safeFilename()` sanitizes filenames | ✅ |
+| **Express Hardening** | `x-powered-by` disabled | ✅ |
+| **Input Validation** | `normalizeLineItems()` + 400 errors for missing fields | ✅ |
+| **Drive Auth** | Service account with domain-wide delegation, key in Secret Manager | ✅ |
+| **Drive Folder Names** | Sanitized: `replace(/[/\\<>:"|?*]/g, '_')` | ✅ |
 | **Storage Rules** | PDFs publicly readable by URL | ⚠️ |
-| **API Key** | Firebase config in frontend HTML | ⚠️ Expected |
 
 ---
 
-## 16. Deployment & Infrastructure
+## 19. Deployment & Infrastructure
 
-### Firebase Project
+### Cloud Function Properties
 
-| Setting | Value |
-|---------|-------|
-| **Project ID** | `western-windows-ca` |
-| **Region** | `us-west1` |
-| **Hosting** | `western-windows-ca.web.app` |
-| **Runtime** | **Node.js 22** |
+| Property | Value |
+|----------|-------|
+| Function name | `api` |
+| Region | `us-west1` |
+| Timeout | **120 seconds** (was 60) |
+| Memory | **512 MiB** (was 256) |
+| Secrets | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM`, `EMAIL_CC`, **`DRIVE_ROOT_FOLDER_ID`**, **`DRIVE_IMPERSONATE_EMAIL`**, **`DRIVE_SA_KEY`** |
 
 ### Commands
 
@@ -605,19 +697,9 @@ firebase deploy --only hosting
 npm run dev                  # Local dev → http://localhost:3000
 ```
 
-### Cloud Function Properties
-
-| Property | Value |
-|----------|-------|
-| Function name | `api` |
-| Region | `us-west1` |
-| Timeout | 60 seconds |
-| Memory | 256 MiB |
-| Secrets | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM`, `EMAIL_CC` |
-
 ---
 
-## 17. Environment Configuration
+## 20. Environment Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -629,34 +711,32 @@ npm run dev                  # Local dev → http://localhost:3000
 | `SMTP_PASS` | placeholder | Gmail app password |
 | `EMAIL_FROM` | `info@westernwindows.ca` | Sender |
 | `EMAIL_CC` | `shane@westernwindows.ca` | CC on all outbound |
+| **`DRIVE_ROOT_FOLDER_ID`** | — | Google Drive root folder ID |
+| **`DRIVE_IMPERSONATE_EMAIL`** | — | Workspace user to impersonate |
+| **`DRIVE_SA_KEY`** | — | Service account key JSON |
 
 > [!WARNING]
-> In production, SMTP variables are **Google Cloud Secrets** — not `.env`. The placeholder `SMTP_PASS` triggers graceful degradation.
+> In production, all secrets are **Google Cloud Secrets** — not `.env`. Missing Drive secrets trigger graceful degradation (Drive filing skipped).
 
 ---
 
-## 18. Company Landing Page
+## 21. Company Landing Page
 
 **File:** `src/index.html` — 896 lines
-
-A full premium company website served at the root URL (`/`):
 
 | Section | Features |
 |---------|----------|
 | **SEO** | Title tags, meta descriptions, OG tags, Twitter cards |
-| **Schema.org** | `HomeAndConstructionBusiness` structured data with services, hours, area served |
-| **Hero** | Animated stat counters (25+ years, 100% satisfaction), CTA buttons |
-| **Services** | Windows, Doors, Skylights with feature lists |
-| **Gallery** | CSS grid image gallery with overlays |
+| **Schema.org** | `HomeAndConstructionBusiness` structured data |
+| **Hero** | Animated stat counters, CTA buttons |
+| **Services** | Windows, Doors, Skylights |
+| **Gallery** | CSS grid image gallery |
 | **Testimonials** | Carousel with navigation dots |
-| **Contact** | Google Forms integration with client-side validation |
-| **Accessibility** | Skip-to-content link, ARIA labels, semantic HTML |
-| **JS** | `script.js` — 290 lines (nav scroll, stats animation, form validation) |
-| **CSS** | `styles.css` — 1,631 lines |
+| **Contact** | Google Forms integration |
 
 ---
 
-## 19. Operational Runbook
+## 22. Operational Runbook
 
 ### Local Development
 
@@ -669,22 +749,19 @@ npm run dev
 
 ### Supplier Seeding
 
-Auto-seeds on first request if `suppliers` collection is empty. Batch writes 5 suppliers.
-
-### Adding a New Supplier
-
-Modify `firestore.js` seed array and redeploy, or add directly via Firebase Console.
+Auto-seeds on first request if `suppliers` collection is empty.
 
 ### Monitoring
 
 - **Logs:** Firebase Console → Functions → Logs
 - **Data:** Firebase Console → Firestore Database
 - **Storage:** Firebase Console → Storage (`portal/pdfs/`)
+- **Drive:** Check organized folder structure in shared Drive
 - **Health:** `GET /api/health`
 
 ---
 
-## 20. Known Gaps & Future Roadmap
+## 23. Known Gaps & Future Roadmap
 
 ### ✅ Fully Implemented
 
@@ -701,47 +778,67 @@ Modify `firestore.js` seed array and redeploy, or add directly via Firebase Cons
 | SMTP graceful degradation | ✅ |
 | Document history with 6-parameter search | ✅ |
 | Order confirmation modal (POs) | ✅ |
-| Dark theme design system | ✅ |
-| Toast notifications (4 variants) | ✅ |
-| Google Places address autocomplete | ✅ |
 | XSS protection (frontend + backend) | ✅ |
 | CORS domain allowlist | ✅ |
-| Input validation with normalizeLineItems() | ✅ |
+| Input validation | ✅ |
 | Company landing page with full SEO | ✅ |
+| **Multi-supplier RFQ (batch create)** | ✅ New |
+| **Batch email send** | ✅ New |
+| **Quote comparison page** | ✅ New |
+| **RFQ → PO conversion** | ✅ New |
+| **Quote price tracking** | ✅ New |
+| **Google Drive auto-filing** | ✅ New |
 
 ### 🔲 Known Gaps
 
 | Gap | Severity |
 |-----|----------|
 | No supplier management UI | Medium |
-| Modern door fields hidden by default (no visible toggle) | Medium |
+| Modern door fields hidden by default | Medium |
 | No pagination on history (capped at 100) | Low |
 | No duplicate-detection on rapid submission | Low |
 | No reporting / analytics dashboard | Medium |
 | PDFs publicly readable in Cloud Storage | Low |
 | Legacy session auth routes still wired | Low |
-| `cookie-session` still in dependencies | Low |
 
 ---
 
-## 21. Changelog — v2.0 → v2.1
+## 24. Changelog
+
+### v2.2.0 (March 9, 2026)
 
 | Change | Details |
 |--------|---------|
-| **Node.js 22** | Runtime upgraded from Node 20 |
-| **firebase-functions ^7.1.0** | Upgraded from ^6.3.2 |
-| **CORS allowlist** | Replaced `origin: true` with explicit domain list |
-| **x-powered-by disabled** | Express hardening |
-| **Transaction doc numbering** | `counters` collection replaces query-based approach |
-| **normalizeLineItems()** | Shared helper with safe defaults for all 30+ fields |
-| **Input validation** | 400 errors for missing `doc_type`, `supplier_id`, `doc_number` |
-| **escapeHtml()** | Server-side HTML encoding in email templates |
-| **safeFilename()** | Sanitizes Content-Disposition filenames |
-| **Root deps cleaned** | Removed `better-sqlite3`, `express-session`, `jspdf`, `multer`, `nodemailer` from root |
-| **Company website** | 896-line landing page with SEO, Schema.org, Google Forms contact |
-| **noindex/nofollow** | Added to all portal pages |
+| **Google Drive integration** | `drive.js` — auto-files PDFs into `Year/Month/Project/` folder structure |
+| **Multi-supplier RFQ** | Select 2+ suppliers, create batch of linked RFQs from one form |
+| **Batch send** | `POST /api/email/send-batch` — send multiple docs in one API call |
+| **Quote comparison** | `compare.html` + `compare.js` — side-by-side pricing with cheapest highlighting |
+| **RFQ → PO conversion** | `POST /api/documents/:id/convert-to-po` — one-click conversion |
+| **Quote price tracking** | `PATCH /api/documents/:id/quote-prices` — save received prices |
+| **Batch group query** | `GET /api/documents/batch-group/:group` — fetch linked docs |
+| **googleapis ^171.4.0** | New dependency for Google Drive API |
+| **Memory 256→512 MiB** | Increased for Drive + batch operations |
+| **Timeout 60→120s** | Increased for batch send operations |
+| **3 new secrets** | `DRIVE_ROOT_FOLDER_ID`, `DRIVE_IMPERSONATE_EMAIL`, `DRIVE_SA_KEY` |
+| **CSS 1024→1268 lines** | New styles for multi-select, comparison table |
+| **form.js 764→855 lines** | Multi-supplier state + batch save logic |
+| **preview.js 179→391 lines** | Batch preview + convert to PO + batch send |
+| **supplier.js 61→143 lines** | Multi-select toggle + action bar |
+
+### v2.1.0 (March 7, 2026)
+
+| Change | Details |
+|--------|---------|
+| Node.js 22 | Runtime upgrade |
+| firebase-functions ^7.1.0 | Package upgrade |
+| CORS allowlist | Replaced permissive `origin: true` |
+| Transaction doc numbering | `counters` collection |
+| `normalizeLineItems()` | Input validation helper |
+| `escapeHtml()` / `safeFilename()` | Email + download security |
+| Root deps cleaned | Removed legacy packages |
+| Company website | 896-line landing page |
 
 ---
 
 > [!NOTE]
-> This document was generated by reading every source file in `c:\Users\shane\AntiG\WW apps\`. **No code was modified** during this documentation effort. Document date: March 7, 2026.
+> This document was generated by reading every source file in `c:\Users\shane\AntiG\WW apps\`. **No code was modified** during this documentation effort. Document date: March 9, 2026.

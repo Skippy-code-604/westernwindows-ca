@@ -81,11 +81,11 @@ westernwindows.ca/api/**        → Cloud Functions v2 (Express, Node 22)
 
 | # | Issue | Severity | Effort |
 |---|-------|----------|--------|
-| B1 | **Google Places API key** — `RefererNotAllowedMapError` on `westernwindows.ca`. Key needs domain added in GCP Console → Credentials → Website restrictions. | 🔴 High | 5 min (manual) |
+| ~~B1~~ | ~~**Google Places API key** — `RefererNotAllowedMapError` on `westernwindows.ca`. Key needs domain added in GCP Console → Credentials → Website restrictions.~~ ✅ Fixed 2026-03-09 | ~~🔴 High~~ | ~~5 min~~ |
 | B2 | **Firebase Storage** not configured for `western-windows-ca` project. Deploy with `--only storage` fails. Doesn't block current functionality but limits future features. | 🟡 Medium | 15 min (manual) |
 | B3 | **Old batch RFQs missing `batch_group`** — Documents created before the fix don't have the field. Compare button won't appear for them. Could backfill via Firestore console or a one-time migration script. | 🟡 Medium | 15 min |
 | B4 | **Deploy cold start timeouts** — Intermittent `User code failed to load. Timeout after 10000` on deploy. Retry usually works. Root cause: googleapis package is heavy at import time. | 🟡 Medium | 30 min |
-| B5 | **`convertToPO` double-parses response** — The `convertToPO` function in `preview.js` calls `res.json()` twice (once for error check, once for data). Second call will fail. | 🔴 High | 5 min |
+| ~~B5~~ | ~~**`convertToPO` double-parses response** — The `convertToPO` function in `preview.js` calls `res.json()` twice (once for error check, once for data). Second call will fail.~~ ✅ Fixed 2026-03-09 | ~~🔴 High~~ | ~~5 min~~ |
 
 ---
 
@@ -93,8 +93,8 @@ westernwindows.ca/api/**        → Cloud Functions v2 (Express, Node 22)
 
 > Things that take under an hour and immediately improve daily workflow.
 
-- [ ] **B1: Fix Google Places API key** — Add `westernwindows.ca` to allowed referrers
-- [ ] **B5: Fix convertToPO double json parse** — Single parse, check structure
+- [x] **B1: Fix Google Places API key** — Add `westernwindows.ca` to allowed referrers ✅
+- [x] **B5: Fix convertToPO double json parse** — Single parse, check structure ✅
 - [ ] **Dashboard quick stats** — Show counts: drafts pending, RFQs awaiting response, POs this month
 - [ ] **Duplicate document** — "Copy as new" button on any document to prefill a new form
 - [ ] **Default "Requested By"** — Remember last used name in localStorage instead of hardcoding "Shane"

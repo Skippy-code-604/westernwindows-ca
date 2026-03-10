@@ -289,14 +289,13 @@ async function sendBatch(ids) {
 async function convertToPO(rfqId) {
     try {
         const res = await apiFetch(`/documents/${rfqId}/convert-to-po`, { method: 'POST' });
+        const data = await res.json();
         if (!res || !res.ok) {
-            const err = await res.json();
-            showToast(err.error || 'Conversion failed', 'error');
+            showToast(data.error || 'Conversion failed', 'error');
             return;
         }
-        const { document: po } = await res.json();
+        const po = data.document;
         showToast(`Created ${po.doc_number} from RFQ!`, 'success');
-        // Navigate to edit the new PO (so user can add prices)
         window.location.href = `/portal/form.html?edit=${po.id}`;
     } catch (err) {
         console.error('Convert error:', err);
