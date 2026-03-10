@@ -95,9 +95,9 @@ westernwindows.ca/api/**        → Cloud Functions v2 (Express, Node 22)
 
 - [x] **B1: Fix Google Places API key** — Add `westernwindows.ca` to allowed referrers ✅
 - [x] **B5: Fix convertToPO double json parse** — Single parse, check structure ✅
-- [ ] **Dashboard quick stats** — Show counts: drafts pending, RFQs awaiting response, POs this month
-- [ ] **Duplicate document** — "Copy as new" button on any document to prefill a new form
-- [ ] **Default "Requested By"** — Remember last used name in localStorage instead of hardcoding "Shane"
+- [x] **Dashboard quick stats** — Drafts pending, RFQs sent, POs this month, PO value ✅
+- [x] **Duplicate document** — 📋 "Copy as New" button on every doc row in history ✅
+- [x] **Default "Requested By"** — Remembers last used name via localStorage ✅
 
 ---
 
