@@ -62,13 +62,18 @@ async function searchDocuments() {
 
     try {
         const res = await apiFetch(`/documents?${params.toString()}`);
-        if (!res || !res.ok) return;
+        if (!res || !res.ok) {
+            showToast('Error loading documents — try removing filters', 'error');
+            renderResults([]);
+            return;
+        }
         const docs = await res.json();
 
         renderResults(docs);
     } catch (err) {
         console.error('Search error:', err);
         showToast('Error searching documents', 'error');
+        renderResults([]);
     }
 }
 

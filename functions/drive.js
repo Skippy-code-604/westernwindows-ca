@@ -4,10 +4,12 @@
  *
  * Folder structure:
  *   {Root} / {YYYY} / {Month} / {Project Name} / {doc_number} — {supplier}.pdf
+ *
+ * Uses @googleapis/drive (lightweight, ~5MB) instead of the monolithic
+ * googleapis package (~170MB) to avoid Cloud Functions cold start timeouts.
  */
 
 // Lazy-loaded to avoid cold start timeout
-let google = null;
 let driveClient = null;
 
 const MONTH_NAMES = [
@@ -25,9 +27,7 @@ const folderCache = new Map();
 function getDrive() {
     if (driveClient) return driveClient;
 
-    if (!google) {
-        google = require('googleapis').google;
-    }
+    const { drive, auth } = require('@googleapis/drive');
 
     const saKeyJson = (process.env.DRIVE_SA_KEY || '').trim();
     const impersonateEmail = (process.env.DRIVE_IMPERSONATE_EMAIL || '').trim();
@@ -38,14 +38,14 @@ function getDrive() {
 
     const saKey = JSON.parse(saKeyJson);
 
-    const auth = new google.auth.JWT({
+    const jwtAuth = new auth.JWT({
         email: saKey.client_email,
         key: saKey.private_key,
         scopes: ['https://www.googleapis.com/auth/drive'],
         subject: impersonateEmail || undefined,
     });
 
-    driveClient = google.drive({ version: 'v3', auth });
+    driveClient = drive({ version: 'v3', auth: jwtAuth });
     return driveClient;
 }
 
