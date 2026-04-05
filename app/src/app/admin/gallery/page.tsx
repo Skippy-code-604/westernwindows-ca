@@ -205,7 +205,13 @@ export default function GalleryAdminPage() {
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="category">Category *</Label>
-                                <Select value={category} onValueChange={setCategory}>
+                                <Select value={CATEGORIES.includes(category) ? category : (category ? '__custom__' : '')} onValueChange={(val) => {
+                                    if (val === '__custom__') {
+                                        setCategory('');
+                                    } else {
+                                        setCategory(val);
+                                    }
+                                }}>
                                     <SelectTrigger>
                                         <SelectValue placeholder="Select category" />
                                     </SelectTrigger>
@@ -213,8 +219,16 @@ export default function GalleryAdminPage() {
                                         {CATEGORIES.map(cat => (
                                             <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                                         ))}
+                                        <SelectItem value="__custom__">Custom...</SelectItem>
                                     </SelectContent>
                                 </Select>
+                                {(!CATEGORIES.includes(category)) && (
+                                    <Input
+                                        placeholder="Enter custom category"
+                                        value={category}
+                                        onChange={(e) => setCategory(e.target.value)}
+                                    />
+                                )}
                             </div>
                         </div>
 

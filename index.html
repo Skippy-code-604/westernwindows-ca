@@ -891,8 +891,8 @@
                     article.innerHTML = `
                         <div class="gallery-image" style="background-image:url('${d.imageUrl}');background-size:cover;background-position:center;"></div>
                         <div class="gallery-overlay">
-                            <h4>${d.title || ''}</h4>
-                            <p>${d.category || ''}</p>
+                            <h4>${d.category || ''}</h4>
+                            <p>${d.description || ''}</p>
                         </div>`;
                     grid.appendChild(article);
                 });
