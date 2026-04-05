@@ -32,6 +32,7 @@ function AdminLayoutContent({ children }: { children: ReactNode }) {
     const pathname = usePathname();
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
+    const [authReady, setAuthReady] = useState(false);
 
     // Check if this is the login page
     const isLoginPage = pathname === '/admin/login';
@@ -40,15 +41,25 @@ function AdminLayoutContent({ children }: { children: ReactNode }) {
         setIsMounted(true);
     }, []);
 
+    // Track when auth has resolved at least once
+    useEffect(() => {
+        if (!loading && isMounted && user && isAdmin) {
+            setAuthReady(true);
+        }
+    }, [loading, isMounted, user, isAdmin]);
+
     useEffect(() => {
         if (!loading && isMounted && !isLoginPage) {
             if (!user) {
-                router.push('/admin/login');
+                // Only redirect if auth has never been ready (fresh visit, not a navigation)
+                if (!authReady) {
+                    router.push('/admin/login');
+                }
             } else if (!isAdmin) {
                 router.push('/admin/login');
             }
         }
-    }, [user, isAdmin, loading, router, isLoginPage, isMounted]);
+    }, [user, isAdmin, loading, router, isLoginPage, isMounted, authReady]);
 
     // Show loading during SSR and initial mount
     if (!isMounted) {
@@ -73,6 +84,14 @@ function AdminLayoutContent({ children }: { children: ReactNode }) {
     }
 
     if (!user || !isAdmin) {
+        // If auth was previously ready, keep showing layout instead of flashing null
+        if (authReady) {
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-background">
+                    <div className="animate-pulse">Loading...</div>
+                </div>
+            );
+        }
         return null;
     }
 
