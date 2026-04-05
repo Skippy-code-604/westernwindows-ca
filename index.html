@@ -412,8 +412,10 @@
                     <h2 id="gallery-title" class="section-title">Project Gallery</h2>
                     <p class="section-subtitle">See the transformation we bring to homes across the region.</p>
                 </header>
-                <div class="gallery-grid" role="list">
-                    <article class="gallery-item large" role="listitem">
+                <div class="gallery-grid" id="galleryGrid" role="list">
+                    <!-- Gallery items loaded dynamically from Firestore -->
+                    <!-- Placeholders shown while loading -->
+                    <article class="gallery-item large gallery-placeholder-item" role="listitem">
                         <div class="gallery-image"
                             style="background: linear-gradient(135deg, var(--color-primary-light) 0%, var(--color-primary) 100%);">
                             <div class="gallery-placeholder" aria-hidden="true">
@@ -429,7 +431,7 @@
                             <p>Complete window replacement</p>
                         </div>
                     </article>
-                    <article class="gallery-item" role="listitem">
+                    <article class="gallery-item gallery-placeholder-item" role="listitem">
                         <div class="gallery-image"
                             style="background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);">
                             <div class="gallery-placeholder" aria-hidden="true">
@@ -445,7 +447,7 @@
                             <p>Custom fiberglass door</p>
                         </div>
                     </article>
-                    <article class="gallery-item" role="listitem">
+                    <article class="gallery-item gallery-placeholder-item" role="listitem">
                         <div class="gallery-image"
                             style="background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%);">
                             <div class="gallery-placeholder" aria-hidden="true">
@@ -458,37 +460,6 @@
                         <div class="gallery-overlay">
                             <h4>Vented Skylight</h4>
                             <p>Kitchen installation</p>
-                        </div>
-                    </article>
-                    <article class="gallery-item" role="listitem">
-                        <div class="gallery-image"
-                            style="background: linear-gradient(135deg, var(--color-primary-light) 0%, var(--color-accent) 100%);">
-                            <div class="gallery-placeholder" aria-hidden="true">
-                                <svg viewBox="0 0 64 64" fill="none" stroke="white" stroke-width="1.5">
-                                    <rect x="4" y="16" width="56" height="32" rx="2" />
-                                    <line x1="20" y1="16" x2="20" y2="48" />
-                                    <line x1="44" y1="16" x2="44" y2="48" />
-                                </svg>
-                            </div>
-                        </div>
-                        <div class="gallery-overlay">
-                            <h4>Picture Windows</h4>
-                            <p>Living room renovation</p>
-                        </div>
-                    </article>
-                    <article class="gallery-item" role="listitem">
-                        <div class="gallery-image"
-                            style="background: linear-gradient(135deg, var(--color-primary-dark) 0%, var(--color-primary) 100%);">
-                            <div class="gallery-placeholder" aria-hidden="true">
-                                <svg viewBox="0 0 64 64" fill="none" stroke="white" stroke-width="1.5">
-                                    <rect x="8" y="12" width="20" height="40" rx="1" />
-                                    <rect x="36" y="12" width="20" height="40" rx="1" />
-                                </svg>
-                            </div>
-                        </div>
-                        <div class="gallery-overlay">
-                            <h4>French Doors</h4>
-                            <p>Patio entrance upgrade</p>
                         </div>
                     </article>
                 </div>
@@ -890,6 +861,47 @@
         </div>
     </footer>
 
+    <!-- Firebase SDK for dynamic gallery -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
+        import { getFirestore, collection, getDocs, query, orderBy } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
+
+        const app = initializeApp({
+            apiKey: 'AIzaSyD8gtXc380asHo3E2K95ZFxDu1-NjJSRlE',
+            projectId: 'western-windows-ca'
+        });
+        const db = getFirestore(app);
+
+        async function loadGallery() {
+            const grid = document.getElementById('galleryGrid');
+            if (!grid) return;
+            try {
+                const q = query(collection(db, 'gallery'), orderBy('order', 'asc'));
+                const snap = await getDocs(q);
+                if (snap.empty) return; // Keep placeholders if no items
+
+                // Remove placeholder items
+                grid.querySelectorAll('.gallery-placeholder-item').forEach(el => el.remove());
+
+                snap.forEach((doc, i) => {
+                    const d = doc.data();
+                    const article = document.createElement('article');
+                    article.className = 'gallery-item' + (i === 0 ? ' large' : '');
+                    article.setAttribute('role', 'listitem');
+                    article.innerHTML = `
+                        <div class="gallery-image" style="background-image:url('${d.imageUrl}');background-size:cover;background-position:center;"></div>
+                        <div class="gallery-overlay">
+                            <h4>${d.title || ''}</h4>
+                            <p>${d.category || ''}</p>
+                        </div>`;
+                    grid.appendChild(article);
+                });
+            } catch (e) {
+                console.warn('Gallery load failed, keeping placeholders:', e);
+            }
+        }
+        loadGallery();
+    </script>
     <script src="script.js"></script>
 </body>
 
