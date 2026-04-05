@@ -1,0 +1,22 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Admin whitelist check
+    function isAdmin() {
+      return request.auth != null && 
+             request.auth.token.email in ['shane@nsccr.ca'];
+    }
+
+    // Gallery images - public read, admin upload
+    match /gallery/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // General uploads - admin only
+    match /{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}
