@@ -441,30 +441,14 @@
                 </header>
                 <div class="testimonials-slider" aria-label="Customer testimonials">
                     <div class="testimonial-track" id="testimonialTrack">
-                        <article class="testimonial-card">
+                        <!-- Reviews loaded dynamically from Firestore -->
+                        <article class="testimonial-card testimonial-placeholder">
                             <div class="testimonial-rating" aria-label="5 out of 5 stars">★★★★★</div>
-                            <blockquote class="testimonial-text">"This recent window storm saw my screen door smash the
-                                exterior glazed. Rob measured the window and will have it replaced tomorrow morning! The
-                                projected time line was two weeks so this is AMAZING. I am thrilled."</blockquote>
+                            <blockquote class="testimonial-text">"Loading reviews..."</blockquote>
                             <footer class="testimonial-author">
-                                <div class="author-avatar" aria-hidden="true">SP</div>
+                                <div class="author-avatar" aria-hidden="true">...</div>
                                 <div class="author-info">
-                                    <cite class="author-name">Shelly P.</cite>
-                                    <span class="author-location">North Vancouver, BC</span>
-                                </div>
-                            </footer>
-                        </article>
-                        <article class="testimonial-card">
-                            <div class="testimonial-rating" aria-label="5 out of 5 stars">★★★★★</div>
-                            <blockquote class="testimonial-text">"Rob and his team at Western Windows installed our new
-                                storm windows. The service was professional, discreet, and fast. Even replaced the last
-                                window short-staffed on short notice. The new windows and white interior frames brighten
-                                up our home and cut down noise and heat-loss."</blockquote>
-                            <footer class="testimonial-author">
-                                <div class="author-avatar" aria-hidden="true">CM</div>
-                                <div class="author-info">
-                                    <cite class="author-name">Chris M.</cite>
-                                    <span class="author-location">Vancouver, BC</span>
+                                    <cite class="author-name"></cite>
                                 </div>
                             </footer>
                         </article>
@@ -846,6 +830,47 @@
             hammer: '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2"><rect x="12" y="8" width="40" height="48" rx="2"/><rect x="20" y="16" width="24" height="12" rx="1"/><circle cx="44" cy="40" r="3"/></svg>',
         };
 
+        async function loadReviews() {
+            const track = document.getElementById('testimonialTrack');
+            if (!track) return;
+            try {
+                const q = query(collection(db, 'reviews'), where('visible', '==', true), orderBy('order', 'asc'));
+                const snap = await getDocs(q);
+                if (snap.empty) return;
+
+                track.querySelectorAll('.testimonial-placeholder').forEach(el => el.remove());
+
+                snap.forEach(doc => {
+                    const d = doc.data();
+                    const stars = '★'.repeat(d.rating || 5) + '☆'.repeat(5 - (d.rating || 5));
+                    const initials = d.authorName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+                    const sourceLabel = d.source === 'google' ? '<span class="review-source">Powered by Google</span>' : 
+                                        d.source && d.source !== 'manual' ? `<span class="review-source">via ${d.source.charAt(0).toUpperCase() + d.source.slice(1)}</span>` : '';
+                    const article = document.createElement('article');
+                    article.className = 'testimonial-card';
+                    article.innerHTML = `
+                        <div class="testimonial-rating" aria-label="${d.rating || 5} out of 5 stars">${stars}</div>
+                        <blockquote class="testimonial-text">"${d.text}"</blockquote>
+                        <footer class="testimonial-author">
+                            <div class="author-avatar" aria-hidden="true">${initials}</div>
+                            <div class="author-info">
+                                <cite class="author-name">${d.authorName}</cite>
+                                ${d.location ? `<span class="author-location">${d.location}</span>` : ''}
+                                ${sourceLabel}
+                            </div>
+                        </footer>`;
+                    track.appendChild(article);
+                });
+
+                // Re-initialize the testimonial slider with new cards
+                if (typeof window.initTestimonialSlider === 'function') {
+                    window.initTestimonialSlider();
+                }
+            } catch (e) {
+                console.warn('Reviews load failed, keeping placeholders:', e);
+            }
+        }
+
         async function loadServices() {
             const grid = document.getElementById('servicesGrid');
             if (!grid) return;
@@ -904,6 +929,7 @@
             }
         }
 
+        loadReviews();
         loadServices();
         loadGallery();
     </script>

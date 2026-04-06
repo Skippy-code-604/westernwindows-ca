@@ -71,6 +71,29 @@ const PARTNERS = [
     }
 ];
 
+const REVIEWS = [
+    {
+        authorName: 'Shelly P.',
+        text: 'This recent window storm saw my screen door smash the exterior glazed. Rob measured the window and will have it replaced tomorrow morning! The projected time line was two weeks so this is AMAZING. I am thrilled.',
+        rating: 5,
+        source: 'google',
+        location: 'North Vancouver, BC',
+        date: '',
+        visible: true,
+        order: 0
+    },
+    {
+        authorName: 'Chris M.',
+        text: 'Rob and his team at Western Windows installed our new storm windows. The service was professional, discreet, and fast. Even replaced the last window short-staffed on short notice. The new windows and white interior frames brighten up our home and cut down noise and heat-loss.',
+        rating: 5,
+        source: 'google',
+        location: 'Vancouver, BC',
+        date: '',
+        visible: true,
+        order: 1
+    }
+];
+
 async function seedCollection(name, items, keyField) {
     const snap = await db.collection(name).get();
     if (!snap.empty) {
@@ -88,7 +111,8 @@ async function main() {
     console.log('=== Seeding Western Windows Firestore ===\n');
     await seedCollection('services', SERVICES, 'title');
     await seedCollection('partners', PARTNERS, 'name');
-    console.log('🎉 Done! Check admin at /admin/services and /admin/partners');
+    await seedCollection('reviews', REVIEWS, 'authorName');
+    console.log('🎉 Done!');
 }
 
 main().catch(e => { console.error('❌ Error:', e.message); process.exit(1); });

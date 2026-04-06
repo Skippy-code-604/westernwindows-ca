@@ -907,6 +907,14 @@ textarea {
     color: var(--color-gray-500);
 }
 
+.review-source {
+    display: block;
+    font-size: 11px;
+    color: var(--color-gray-400);
+    margin-top: 2px;
+    font-style: italic;
+}
+
 .testimonial-nav {
     display: flex;
     align-items: center;

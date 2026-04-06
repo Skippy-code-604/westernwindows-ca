@@ -11,6 +11,9 @@ import {
     Users,
     Handshake,
     Wrench,
+    Star,
+    FileText,
+    ExternalLink,
     LogOut,
     Menu,
     X
@@ -23,6 +26,8 @@ const navItems = [
     { href: '/admin/contractors', icon: Users, label: 'Contractors' },
     { href: '/admin/partners', icon: Handshake, label: 'Partners' },
     { href: '/admin/services', icon: Wrench, label: 'Services' },
+    { href: '/admin/reviews', icon: Star, label: 'Reviews' },
+    { href: '/portal', icon: FileText, label: 'Portal', external: true },
 ];
 
 function AdminLayoutContent({ children }: { children: ReactNode }) {
@@ -129,24 +134,31 @@ function AdminLayoutContent({ children }: { children: ReactNode }) {
 
                     {/* Navigation */}
                     <nav className="flex-1 p-4 space-y-1">
-                        {navItems.map((item) => {
+                        {navItems.map((item, idx) => {
                             const isActive = pathname === item.href;
+                            const isExternal = 'external' in item && item.external;
+                            const prevItem = navItems[idx - 1];
+                            const showDivider = isExternal && prevItem && !('external' in prevItem && prevItem.external);
                             return (
-                                <a
-                                    key={item.href}
-                                    href={item.href}
-                                    className={`
-                    flex items-center gap-3 px-3 py-2 rounded-lg transition-colors
-                    ${isActive
-                                            ? 'bg-primary text-primary-foreground'
-                                            : 'hover:bg-muted text-muted-foreground hover:text-foreground'
-                                        }
-                  `}
-                                    onClick={() => setSidebarOpen(false)}
-                                >
-                                    <item.icon className="h-5 w-5" />
-                                    {item.label}
-                                </a>
+                                <div key={item.href}>
+                                    {showDivider && <div className="border-t my-2" />}
+                                    <a
+                                        href={item.href}
+                                        {...(isExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                                        className={`
+                                            flex items-center gap-3 px-3 py-2 rounded-lg transition-colors
+                                            ${isActive
+                                                ? 'bg-primary text-primary-foreground'
+                                                : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                                            }
+                                        `}
+                                        onClick={() => setSidebarOpen(false)}
+                                    >
+                                        <item.icon className="h-5 w-5" />
+                                        {item.label}
+                                        {isExternal && <ExternalLink className="h-3 w-3 ml-auto opacity-50" />}
+                                    </a>
+                                </div>
                             );
                         })}
                     </nav>

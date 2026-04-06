@@ -28,6 +28,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /reviews/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // Error logs (anyone can write for debugging, admin reads)
     match /error_logs/{document=**} {
       allow create: if true;
