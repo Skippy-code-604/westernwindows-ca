@@ -223,8 +223,9 @@
                     <p class="section-subtitle">From modern windows to elegant skylights, we provide comprehensive
                         solutions for every home improvement need.</p>
                 </header>
-                <div class="services-grid">
-                    <article class="service-card">
+                <div class="services-grid" id="servicesGrid">
+                    <!-- Services loaded dynamically from Firestore -->
+                    <article class="service-card service-placeholder">
                         <div class="service-icon" aria-hidden="true">
                             <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="8" y="12" width="48" height="40" rx="2" />
@@ -233,22 +234,10 @@
                             </svg>
                         </div>
                         <h3>Window Installation</h3>
-                        <p>Energy-efficient windows that reduce utility costs and enhance your home's aesthetic appeal.
-                            Double & triple-pane options available.</p>
-                        <ul class="service-features">
-                            <li>Vinyl, Wood & Fiberglass</li>
-                            <li>Custom Sizes Available</li>
-                            <li>Energy Star Certified</li>
-                        </ul>
-                        <a href="#contact" class="service-link">
-                            Learn More
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                stroke-width="2" aria-hidden="true">
-                                <path d="M5 12h14M12 5l7 7-7 7" />
-                            </svg>
-                        </a>
+                        <p>Energy-efficient windows that reduce utility costs and enhance your home's aesthetic appeal.</p>
+                        <a href="#contact" class="service-link">Learn More →</a>
                     </article>
-                    <article class="service-card featured">
+                    <article class="service-card service-placeholder featured">
                         <div class="featured-badge">Most Popular</div>
                         <div class="service-icon" aria-hidden="true">
                             <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2">
@@ -258,45 +247,20 @@
                             </svg>
                         </div>
                         <h3>Door Replacement</h3>
-                        <p>Stylish entry doors, patio doors, and French doors that make a lasting impression while
-                            providing superior security.</p>
-                        <ul class="service-features">
-                            <li>Entry & Storm Doors</li>
-                            <li>Sliding Glass Doors</li>
-                            <li>French & Patio Doors</li>
-                        </ul>
-                        <a href="#contact" class="service-link">
-                            Learn More
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                stroke-width="2" aria-hidden="true">
-                                <path d="M5 12h14M12 5l7 7-7 7" />
-                            </svg>
-                        </a>
+                        <p>Stylish entry doors, patio doors, and French doors.</p>
+                        <a href="#contact" class="service-link">Learn More →</a>
                     </article>
-                    <article class="service-card">
+                    <article class="service-card service-placeholder">
                         <div class="service-icon" aria-hidden="true">
                             <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2">
                                 <polygon points="32,4 56,28 56,56 8,56 8,28" />
                                 <line x1="32" y1="4" x2="32" y2="40" />
                                 <line x1="8" y1="28" x2="56" y2="28" />
-                                <circle cx="32" cy="16" r="6" fill="currentColor" opacity="0.3" />
                             </svg>
                         </div>
                         <h3>Skylight Installation</h3>
-                        <p>Bring natural light into your home with our premium skylights. Fixed, vented, and tubular
-                            options to brighten any space.</p>
-                        <ul class="service-features">
-                            <li>Fixed & Vented Options</li>
-                            <li>Solar-Powered Blinds</li>
-                            <li>Leak-Proof Guarantee</li>
-                        </ul>
-                        <a href="#contact" class="service-link">
-                            Learn More
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                stroke-width="2" aria-hidden="true">
-                                <path d="M5 12h14M12 5l7 7-7 7" />
-                            </svg>
-                        </a>
+                        <p>Bring natural light into your home with our premium skylights.</p>
+                        <a href="#contact" class="service-link">Learn More →</a>
                     </article>
                 </div>
             </div>
@@ -872,15 +836,54 @@
         });
         const db = getFirestore(app);
 
+        // SVG icons for services
+        const SERVICE_ICONS = {
+            home: '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="12" width="48" height="40" rx="2"/><line x1="32" y1="12" x2="32" y2="52"/><line x1="8" y1="32" x2="56" y2="32"/></svg>',
+            lightbulb: '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2"><polygon points="32,4 56,28 56,56 8,56 8,28"/><line x1="32" y1="4" x2="32" y2="40"/><line x1="8" y1="28" x2="56" y2="28"/><circle cx="32" cy="16" r="6" fill="currentColor" opacity="0.3"/></svg>',
+            ruler: '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="48" height="48" rx="4"/><line x1="20" y1="8" x2="20" y2="20"/><line x1="32" y1="8" x2="32" y2="24"/><line x1="44" y1="8" x2="44" y2="20"/></svg>',
+            wrench: '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 48l20-20M40 12a12 12 0 0 1 12 12c0 3-1 6-3 8L29 52a12 12 0 0 1-8-20"/></svg>',
+            settings: '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2"><circle cx="32" cy="32" r="10"/><path d="M32 8v8M32 48v8M8 32h8M48 32h8M14 14l6 6M44 44l6 6M14 50l6-6M44 20l6-6"/></svg>',
+            hammer: '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2"><rect x="12" y="8" width="40" height="48" rx="2"/><rect x="20" y="16" width="24" height="12" rx="1"/><circle cx="44" cy="40" r="3"/></svg>',
+        };
+
+        async function loadServices() {
+            const grid = document.getElementById('servicesGrid');
+            if (!grid) return;
+            try {
+                const q = query(collection(db, 'services'), orderBy('order', 'asc'));
+                const snap = await getDocs(q);
+                if (snap.empty) return;
+
+                grid.querySelectorAll('.service-placeholder').forEach(el => el.remove());
+
+                snap.forEach((doc, i) => {
+                    const d = doc.data();
+                    const article = document.createElement('article');
+                    article.className = 'service-card' + (i === 1 ? ' featured' : '');
+                    const iconSvg = SERVICE_ICONS[d.icon] || SERVICE_ICONS.home;
+                    article.innerHTML = `
+                        ${i === 1 ? '<div class="featured-badge">Most Popular</div>' : ''}
+                        <div class="service-icon" aria-hidden="true">${iconSvg}</div>
+                        <h3>${d.title}</h3>
+                        <p>${d.description}</p>
+                        <a href="#contact" class="service-link">Learn More
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                        </a>`;
+                    grid.appendChild(article);
+                });
+            } catch (e) {
+                console.warn('Services load failed, keeping placeholders:', e);
+            }
+        }
+
         async function loadGallery() {
             const grid = document.getElementById('galleryGrid');
             if (!grid) return;
             try {
                 const q = query(collection(db, 'gallery'), where('visible', '==', true), orderBy('order', 'asc'));
                 const snap = await getDocs(q);
-                if (snap.empty) return; // Keep placeholders if no items
+                if (snap.empty) return;
 
-                // Remove placeholder items
                 grid.querySelectorAll('.gallery-placeholder-item').forEach(el => el.remove());
 
                 snap.forEach((doc, i) => {
@@ -900,6 +903,8 @@
                 console.warn('Gallery load failed, keeping placeholders:', e);
             }
         }
+
+        loadServices();
         loadGallery();
     </script>
     <script src="script.js"></script>
