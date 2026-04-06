@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head><title>Seed Firestore</title></head>
+<body>
+<h1>Western Windows — Firestore Seeder</h1>
+<pre id="log">Starting...</pre>
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
+import { getFirestore, collection, addDoc, getDocs, query } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
+
+const app = initializeApp({ apiKey: 'AIzaSyD8gtXc380asHo3E2K95ZFxDu1-NjJSRlE', projectId: 'western-windows-ca' });
+const db = getFirestore(app);
+const log = document.getElementById('log');
+function print(msg) { log.textContent += '\n' + msg; console.log(msg); }
+
+const SERVICES = [
+    {
+        title: 'Window Installation',
+        description: 'Energy-efficient windows that reduce utility costs and enhance your home\'s aesthetic appeal. Double & triple-pane options available. Vinyl, Wood & Fiberglass. Custom Sizes Available. Energy Star Certified.',
+        icon: 'home',
+        order: 0
+    },
+    {
+        title: 'Door Replacement',
+        description: 'Stylish entry doors, patio doors, and French doors that make a lasting impression while providing superior security. Entry & Storm Doors. Sliding Glass Doors. French & Patio Doors.',
+        icon: 'home',
+        order: 1
+    },
+    {
+        title: 'Skylight Installation',
+        description: 'Bring natural light into your home with our premium skylights. Fixed, vented, and tubular options to brighten any space. Solar-Powered Blinds. Leak-Proof Guarantee.',
+        icon: 'lightbulb',
+        order: 2
+    },
+    {
+        title: 'Custom Glass Work',
+        description: 'Shower enclosures, glass railings, mirrors, and specialty glass installations. Custom cut to fit any space with precision craftsmanship.',
+        icon: 'ruler',
+        order: 3
+    },
+    {
+        title: 'Glass & Storefront',
+        description: 'Commercial glass solutions including storefront systems, curtain walls, and glass partitions. Professional installation for businesses.',
+        icon: 'wrench',
+        order: 4
+    },
+    {
+        title: 'Window & Door Repair',
+        description: 'Expert repair services for foggy glass, broken seals, hardware issues, and weatherstripping. Extend the life of your existing windows and doors.',
+        icon: 'settings',
+        order: 5
+    }
+];
+
+const PARTNERS = [
+    {
+        name: 'NSCCR - North Shore Custom Carpentry & Renovations',
+        description: 'Sister company specializing in custom cabinetry, home renovations, and handyman services.',
+        websiteUrl: 'https://nsccr.ca',
+        logoUrl: '',
+        order: 0
+    },
+    {
+        name: 'Gentek',
+        description: 'Premium building products manufacturer — windows, doors, siding.',
+        websiteUrl: 'https://gentek.ca',
+        logoUrl: '',
+        order: 1
+    },
+    {
+        name: 'Modern Windows',
+        description: 'High-performance window and door manufacturer.',
+        websiteUrl: '',
+        logoUrl: '',
+        order: 2
+    }
+];
+
+async function seedCollection(name, items) {
+    // Check if already seeded
+    const existing = await getDocs(query(collection(db, name)));
+    if (!existing.empty) {
+        print(`⚠️  "${name}" already has ${existing.size} documents — SKIPPING (delete manually to re-seed)`);
+        return;
+    }
+
+    for (const item of items) {
+        const ref = await addDoc(collection(db, name), item);
+        print(`✅ ${name}: added "${item.title || item.name}" (${ref.id})`);
+    }
+    print(`✅ ${name}: seeded ${items.length} items`);
+}
+
+try {
+    print('\n--- Seeding Services ---');
+    await seedCollection('services', SERVICES);
+    
+    print('\n--- Seeding Partners ---');
+    await seedCollection('partners', PARTNERS);
+
+    print('\n🎉 Done! Check admin at /admin/services and /admin/partners');
+} catch (e) {
+    print('❌ Error: ' + e.message);
+    console.error(e);
+}
+</script>
+</body>
+</html>
