@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Pencil, Trash2, X, Upload, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Upload, Loader2, Eye, EyeOff } from 'lucide-react';
 import Image from 'next/image';
 import {
     GalleryItem,
@@ -16,8 +16,10 @@ import {
     addGalleryItem,
     updateGalleryItem,
     deleteGalleryItem,
-    uploadGalleryImage
+    uploadGalleryImage,
+    toggleGalleryItemVisibility
 } from '@/lib/services/gallery-service';
+import { logError } from '@/lib/services/error-logger';
 
 const CATEGORIES = [
     'Kitchen',
@@ -37,6 +39,7 @@ export default function GalleryAdminPage() {
     const [isNew, setIsNew] = useState(false);
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [pageError, setPageError] = useState<string | null>(null);
     const { toast } = useToast();
 
     // Form state
@@ -48,16 +51,22 @@ export default function GalleryAdminPage() {
     const [imagePreview, setImagePreview] = useState('');
 
     useEffect(() => {
+        console.log('[Gallery] Page mounted, loading items...');
         loadItems();
     }, []);
 
     async function loadItems() {
         try {
+            console.log('[Gallery] Fetching gallery items from Firestore...');
             const data = await getGalleryItems();
+            console.log('[Gallery] Loaded', data.length, 'items');
             setItems(data);
-        } catch (error) {
+        } catch (error: any) {
+            const msg = error?.message || error?.code || String(error);
+            console.error('[Gallery] Error loading:', msg, error);
+            setPageError(msg);
+            logError('gallery-page-load', error);
             toast({ title: 'Error loading gallery', variant: 'destructive' });
-            console.error(error);
         } finally {
             setLoading(false);
         }
@@ -127,6 +136,7 @@ export default function GalleryAdminPage() {
                 description,
                 category,
                 imageUrl: finalImageUrl,
+                visible: isNew ? true : (editing?.visible ?? true),
                 order: isNew ? items.length : (editing?.order || 0)
             };
 
@@ -162,10 +172,33 @@ export default function GalleryAdminPage() {
         }
     }
 
+    async function handleToggleVisibility(item: GalleryItem) {
+        try {
+            await toggleGalleryItemVisibility(item.id!, !item.visible);
+            toast({ title: item.visible ? 'Hidden from gallery' : 'Shown in gallery' });
+            loadItems();
+        } catch (error) {
+            toast({ title: 'Error toggling visibility', variant: 'destructive' });
+            console.error(error);
+        }
+    }
+
     if (loading) {
         return (
             <div className="flex items-center justify-center h-64">
                 <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+        );
+    }
+
+    if (pageError) {
+        return (
+            <div className="p-8 bg-red-50 border border-red-200 rounded-lg">
+                <h2 className="text-xl font-bold text-red-600">Gallery Error</h2>
+                <p className="mt-2 text-red-500 font-mono text-sm">{pageError}</p>
+                <button onClick={() => { setPageError(null); setLoading(true); loadItems(); }} className="mt-4 px-4 py-2 bg-red-600 text-white rounded">
+                    Retry
+                </button>
             </div>
         );
     }
@@ -298,7 +331,7 @@ export default function GalleryAdminPage() {
             ) : (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {items.map(item => (
-                        <Card key={item.id} className="overflow-hidden group">
+                        <Card key={item.id} className={`overflow-hidden group ${!item.visible ? 'opacity-50' : ''}`}>
                             <div className="relative aspect-square">
                                 <Image
                                     src={item.imageUrl}
@@ -306,7 +339,15 @@ export default function GalleryAdminPage() {
                                     fill
                                     className="object-cover"
                                 />
+                                {!item.visible && (
+                                    <div className="absolute top-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
+                                        Hidden
+                                    </div>
+                                )}
                                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                    <Button size="sm" variant="secondary" onClick={() => handleToggleVisibility(item)} title={item.visible ? 'Hide from gallery' : 'Show in gallery'}>
+                                        {item.visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                    </Button>
                                     <Button size="sm" variant="secondary" onClick={() => openEditor(item)}>
                                         <Pencil className="h-4 w-4" />
                                     </Button>

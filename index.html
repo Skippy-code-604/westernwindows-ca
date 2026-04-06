@@ -864,7 +864,7 @@
     <!-- Firebase SDK for dynamic gallery -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
-        import { getFirestore, collection, getDocs, query, orderBy } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
+        import { getFirestore, collection, getDocs, query, orderBy, where } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
 
         const app = initializeApp({
             apiKey: 'AIzaSyD8gtXc380asHo3E2K95ZFxDu1-NjJSRlE',
@@ -876,7 +876,7 @@
             const grid = document.getElementById('galleryGrid');
             if (!grid) return;
             try {
-                const q = query(collection(db, 'gallery'), orderBy('order', 'asc'));
+                const q = query(collection(db, 'gallery'), where('visible', '==', true), orderBy('order', 'asc'));
                 const snap = await getDocs(q);
                 if (snap.empty) return; // Keep placeholders if no items
 

@@ -19,6 +19,7 @@ export interface GalleryItem {
     imageUrl: string;
     category: string;
     order: number;
+    visible: boolean;
     createdAt?: Timestamp;
 }
 
@@ -29,6 +30,7 @@ export async function getGalleryItems(): Promise<GalleryItem[]> {
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({
         id: doc.id,
+        visible: true, // Default for items created before this field existed
         ...doc.data()
     } as GalleryItem));
 }
@@ -36,9 +38,14 @@ export async function getGalleryItems(): Promise<GalleryItem[]> {
 export async function addGalleryItem(item: Omit<GalleryItem, 'id' | 'createdAt'>): Promise<string> {
     const docRef = await addDoc(collection(db, COLLECTION), {
         ...item,
+        visible: item.visible ?? true,
         createdAt: Timestamp.now()
     });
     return docRef.id;
+}
+
+export async function toggleGalleryItemVisibility(id: string, visible: boolean): Promise<void> {
+    await updateDoc(doc(db, COLLECTION, id), { visible });
 }
 
 export async function updateGalleryItem(id: string, item: Partial<GalleryItem>): Promise<void> {
@@ -50,7 +57,7 @@ export async function deleteGalleryItem(id: string, imageUrl?: string): Promise<
     await deleteDoc(doc(db, COLLECTION, id));
 
     // Delete image from Storage if it's a Firebase Storage URL
-    if (imageUrl && imageUrl.includes('firebasestorage.googleapis.com')) {
+    if (imageUrl && (imageUrl.includes('firebasestorage.googleapis.com') || imageUrl.includes('firebasestorage.app'))) {
         try {
             const imageRef = ref(storage, imageUrl);
             await deleteObject(imageRef);

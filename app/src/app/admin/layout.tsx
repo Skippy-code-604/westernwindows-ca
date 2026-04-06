@@ -2,7 +2,6 @@
 
 import { ReactNode, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import Link from 'next/link';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/icons/logo';
@@ -114,10 +113,10 @@ function AdminLayoutContent({ children }: { children: ReactNode }) {
                 <div className="flex flex-col h-full">
                     {/* Header */}
                     <div className="p-4 border-b flex items-center justify-between">
-                        <Link href="/admin" className="flex items-center gap-2">
+                        <a href="/admin" className="flex items-center gap-2">
                             <Logo />
                             <span className="font-semibold text-sm">Admin</span>
-                        </Link>
+                        </a>
                         <Button
                             variant="ghost"
                             size="icon"
@@ -133,7 +132,7 @@ function AdminLayoutContent({ children }: { children: ReactNode }) {
                         {navItems.map((item) => {
                             const isActive = pathname === item.href;
                             return (
-                                <Link
+                                <a
                                     key={item.href}
                                     href={item.href}
                                     className={`
@@ -147,7 +146,7 @@ function AdminLayoutContent({ children }: { children: ReactNode }) {
                                 >
                                     <item.icon className="h-5 w-5" />
                                     {item.label}
-                                </Link>
+                                </a>
                             );
                         })}
                     </nav>
