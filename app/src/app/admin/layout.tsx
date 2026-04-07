@@ -13,8 +13,6 @@ import {
     Wrench,
     Star,
     FileText,
-    FilePlus,
-    Clock,
     LogOut,
     Menu,
     X
@@ -35,10 +33,8 @@ const navItems: NavItem[] = [
     { href: '/admin/partners', icon: Handshake, label: 'Partners' },
     { href: '/admin/services', icon: Wrench, label: 'Services' },
     { href: '/admin/reviews', icon: Star, label: 'Reviews' },
-    // Portal section
-    { href: '/admin/portal', icon: FileText, label: 'Portal Dashboard', section: 'Portal' },
-    { href: '/admin/portal/new', icon: FilePlus, label: 'New Document' },
-    { href: '/admin/portal/history', icon: Clock, label: 'History' },
+    // Portal — opens full-screen at /portal/
+    { href: '/portal/dashboard.html', icon: FileText, label: 'Open Portal', section: 'Portal' },
 ];
 
 function AdminLayoutContent({ children }: { children: ReactNode }) {
