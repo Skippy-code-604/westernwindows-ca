@@ -13,21 +13,32 @@ import {
     Wrench,
     Star,
     FileText,
-    ExternalLink,
+    FilePlus,
+    Clock,
     LogOut,
     Menu,
     X
 } from 'lucide-react';
 import { useState } from 'react';
 
-const navItems = [
+interface NavItem {
+    href: string;
+    icon: typeof LayoutDashboard;
+    label: string;
+    section?: string;
+}
+
+const navItems: NavItem[] = [
     { href: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/admin/gallery', icon: Image, label: 'Gallery' },
     { href: '/admin/contractors', icon: Users, label: 'Contractors' },
     { href: '/admin/partners', icon: Handshake, label: 'Partners' },
     { href: '/admin/services', icon: Wrench, label: 'Services' },
     { href: '/admin/reviews', icon: Star, label: 'Reviews' },
-    { href: '/portal', icon: FileText, label: 'Portal', external: true },
+    // Portal section
+    { href: '/admin/portal', icon: FileText, label: 'Portal Dashboard', section: 'Portal' },
+    { href: '/admin/portal/new', icon: FilePlus, label: 'New Document' },
+    { href: '/admin/portal/history', icon: Clock, label: 'History' },
 ];
 
 function AdminLayoutContent({ children }: { children: ReactNode }) {
@@ -134,17 +145,21 @@ function AdminLayoutContent({ children }: { children: ReactNode }) {
 
                     {/* Navigation */}
                     <nav className="flex-1 p-4 space-y-1">
-                        {navItems.map((item, idx) => {
-                            const isActive = pathname === item.href;
-                            const isExternal = 'external' in item && item.external;
-                            const prevItem = navItems[idx - 1];
-                            const showDivider = isExternal && prevItem && !('external' in prevItem && prevItem.external);
+                        {navItems.map((item) => {
+                            const isActive = pathname === item.href ||
+                                (item.href !== '/admin' && pathname.startsWith(item.href));
                             return (
                                 <div key={item.href}>
-                                    {showDivider && <div className="border-t my-2" />}
+                                    {item.section && (
+                                        <div className="pt-4 pb-1">
+                                            <div className="border-t mb-2" />
+                                            <span className="px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                                                {item.section}
+                                            </span>
+                                        </div>
+                                    )}
                                     <a
                                         href={item.href}
-                                        {...(isExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
                                         className={`
                                             flex items-center gap-3 px-3 py-2 rounded-lg transition-colors
                                             ${isActive
@@ -156,7 +171,6 @@ function AdminLayoutContent({ children }: { children: ReactNode }) {
                                     >
                                         <item.icon className="h-5 w-5" />
                                         {item.label}
-                                        {isExternal && <ExternalLink className="h-3 w-3 ml-auto opacity-50" />}
                                     </a>
                                 </div>
                             );
