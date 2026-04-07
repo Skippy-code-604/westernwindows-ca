@@ -81,6 +81,7 @@ app.get('/api/auth/check', async (req, res) => {
 app.use('/api/suppliers', require('./routes/suppliers'));
 app.use('/api/documents', require('./routes/documents'));
 app.use('/api/email', require('./routes/email'));
+app.use('/api/google-reviews', require('./routes/google-reviews'));
 
 // Export as Firebase Cloud Function
 exports.api = onRequest({

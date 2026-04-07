@@ -9,7 +9,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Pencil, Trash2, X, Loader2, Star, Globe, Eye, EyeOff } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Loader2, Star, Globe, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { getAuth } from 'firebase/auth';
 import {
     Review,
     ReviewSource,
@@ -57,6 +58,7 @@ export default function ReviewsAdminPage() {
     const [editing, setEditing] = useState<Review | null>(null);
     const [isNew, setIsNew] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [syncing, setSyncing] = useState(false);
     const { toast } = useToast();
 
     const [authorName, setAuthorName] = useState('');
@@ -164,6 +166,33 @@ export default function ReviewsAdminPage() {
         }
     }
 
+    async function handleGoogleSync() {
+        setSyncing(true);
+        try {
+            const auth = getAuth();
+            const user = auth.currentUser;
+            if (!user) {
+                toast({ title: 'You must be logged in to sync', variant: 'destructive' });
+                return;
+            }
+            const token = await user.getIdToken();
+            const resp = await fetch('/api/google-reviews/sync', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                throw new Error(data.error || 'Sync failed');
+            }
+            toast({ title: data.message });
+            loadItems();
+        } catch (error: any) {
+            toast({ title: error.message || 'Google sync failed', variant: 'destructive' });
+            console.error(error);
+        } finally {
+            setSyncing(false);
+        }
+    }
+
     if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></div>;
 
     return (
@@ -173,7 +202,13 @@ export default function ReviewsAdminPage() {
                     <h1 className="text-3xl font-bold">Reviews</h1>
                     <p className="text-muted-foreground">Manage customer testimonials from Google and other sources</p>
                 </div>
-                <Button onClick={() => openEditor()}><Plus className="h-4 w-4 mr-2" />Add Review</Button>
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={handleGoogleSync} disabled={syncing}>
+                        {syncing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                        Sync from Google
+                    </Button>
+                    <Button onClick={() => openEditor()}><Plus className="h-4 w-4 mr-2" />Add Review</Button>
+                </div>
             </div>
 
             {editing !== null && (
