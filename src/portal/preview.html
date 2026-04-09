@@ -42,6 +42,24 @@
                 </div>
             </div>
 
+            <!-- Quote Attachments (PO only, shown dynamically) -->
+            <div class="card mb-2" id="preview-attachments-section" style="display:none;">
+                <h3 class="section-header">📎 Manufacturer Quote Attachments</h3>
+                <div class="attachment-dropzone" id="attachment-dropzone">
+                    <div class="attachment-dropzone-content">
+                        <span class="attachment-dropzone-icon">📎</span>
+                        <span class="attachment-dropzone-text">Drag & drop quote files here, or <strong>click to browse</strong></span>
+                        <span class="attachment-dropzone-hint">PDF, JPG, PNG — max 10 MB per file</span>
+                    </div>
+                    <input type="file" id="attachment-input" multiple accept=".pdf,.jpg,.jpeg,.png,.webp" style="display:none;">
+                </div>
+                <div id="attachment-list" class="attachment-list"></div>
+                <div id="attachment-uploading" class="attachment-uploading" style="display:none;">
+                    <div class="attachment-progress-bar"><div class="attachment-progress-fill" id="attachment-progress-fill"></div></div>
+                    <span class="attachment-progress-text" id="attachment-progress-text">Uploading...</span>
+                </div>
+            </div>
+
             <!-- Actions -->
             <div class="card">
                 <h3 class="section-header">Actions</h3>
@@ -58,6 +76,7 @@
 
     <div class="toast-container" id="toast-container"></div>
     <script type="module" src="/portal/js/firebase-auth.js"></script>
+    <script type="module" src="/portal/js/attachments.js"></script>
     <script src="/portal/js/utils.js"></script>
     <script src="/portal/js/preview.js"></script>
 </body>

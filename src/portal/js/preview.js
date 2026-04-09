@@ -113,6 +113,17 @@ async function loadDocument(id) {
             sendInfo.innerHTML += `<br><a href="/portal/compare.html?group=${encodeURIComponent(currentDoc.batch_group)}" class="btn btn-outline btn-sm" style="margin-top:10px;">📊 Compare Supplier Quotes</a>`;
         }
 
+        // Show attachment section for POs
+        if (currentDoc.doc_type === 'PO') {
+            const attachSection = document.getElementById('preview-attachments-section');
+            if (attachSection) attachSection.style.display = 'block';
+
+            // Load existing attachments
+            if (window.attachmentManager && currentDoc.attachments) {
+                window.attachmentManager.loadExisting(currentDoc.attachments);
+            }
+        }
+
     } catch (err) {
         console.error('Error loading document:', err);
         showToast('Error loading document', 'error');
@@ -331,6 +342,18 @@ async function sendToSupplier(id) {
     sendBtn.innerHTML = '<span class="spinner"></span> Sending...';
 
     try {
+        // Upload any pending quote attachments before sending (PO only)
+        if (window.attachmentManager && window.attachmentManager.hasPendingFiles()) {
+            sendBtn.innerHTML = '<span class="spinner"></span> Uploading attachments...';
+            await window.attachmentManager.uploadPendingFiles(id);
+            // Persist attachment metadata to the document
+            await apiFetch(`/documents/${id}/attachments`, {
+                method: 'PUT',
+                body: { attachments: window.attachmentManager.getAttachments() },
+            });
+        }
+
+        sendBtn.innerHTML = '<span class="spinner"></span> Sending...';
         const res = await apiFetch(`/email/send/${id}`, { method: 'POST' });
 
         if (!res || !res.ok) {
