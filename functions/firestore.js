@@ -276,6 +276,65 @@ async function getSupplierPriceHistory(supplierId, limit = 20) {
     return Object.values(priceMap).sort((a, b) => new Date(b.date) - new Date(a.date));
 }
 
+async function getProjectList() {
+    const snapshot = await getDb().collection('documents')
+        .orderBy('created_at', 'desc')
+        .get();
+
+    const projects = {};
+    snapshot.forEach(doc => {
+        const data = doc.data();
+        const name = (data.project_name || '').trim();
+        if (!name) return;
+
+        if (!projects[name]) {
+            projects[name] = {
+                project_name: name,
+                doc_count: 0,
+                rfq_count: 0,
+                po_count: 0,
+                total_value: 0,
+                last_activity: data.created_at?.toDate?.() || new Date(),
+                statuses: new Set(),
+                suppliers: new Set(),
+            };
+        }
+
+        const p = projects[name];
+        p.doc_count++;
+        if (data.doc_type === 'RFQ') p.rfq_count++;
+        if (data.doc_type === 'PO') p.po_count++;
+        if (data.total_amount) p.total_value += Number(data.total_amount);
+        if (data.status) p.statuses.add(data.status);
+        if (data.supplier_name) p.suppliers.add(data.supplier_name);
+    });
+
+    return Object.values(projects)
+        .map(p => ({
+            ...p,
+            statuses: [...p.statuses],
+            suppliers: [...p.suppliers],
+            last_activity: p.last_activity.toISOString ? p.last_activity.toISOString() : p.last_activity,
+        }))
+        .sort((a, b) => new Date(b.last_activity) - new Date(a.last_activity));
+}
+
+async function getDocumentsByProject(projectName) {
+    const snapshot = await getDb().collection('documents')
+        .where('project_name', '==', projectName)
+        .orderBy('created_at', 'desc')
+        .get();
+
+    return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+            id: doc.id,
+            ...data,
+            created_at: data.created_at?.toDate?.()?.toISOString() || null,
+        };
+    });
+}
+
 async function searchDocuments(filters) {
     let query = getDb().collection('documents');
 
@@ -350,6 +409,8 @@ module.exports = {
     updateDriveUrl,
     updateDocumentAttachments,
     getSupplierPriceHistory,
+    getProjectList,
+    getDocumentsByProject,
     searchDocuments,
     getRecentDocuments,
     deleteDocument,

@@ -62,6 +62,28 @@ router.get('/next-number/:type', async (req, res) => {
     }
 });
 
+// Get all projects (grouped by project_name)
+router.get('/projects/list', async (req, res) => {
+    try {
+        const projects = await store.getProjectList();
+        res.json({ projects });
+    } catch (err) {
+        console.error('Error fetching projects:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get documents for a specific project
+router.get('/projects/:name', async (req, res) => {
+    try {
+        const docs = await store.getDocumentsByProject(decodeURIComponent(req.params.name));
+        res.json({ documents: docs });
+    } catch (err) {
+        console.error('Error fetching project docs:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Create a new document with line items
 router.post('/', async (req, res) => {
     try {
