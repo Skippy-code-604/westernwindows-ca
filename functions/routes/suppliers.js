@@ -19,6 +19,17 @@ router.get('/', async (req, res) => {
     }
 });
 
+// Get supplier price history (most recent prices per product)
+router.get('/:id/price-history', async (req, res) => {
+    try {
+        const history = await store.getSupplierPriceHistory(req.params.id);
+        res.json({ prices: history });
+    } catch (err) {
+        console.error('Price history error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Get supplier by ID
 router.get('/:id', async (req, res) => {
     try {

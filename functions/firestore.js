@@ -226,6 +226,56 @@ async function updateDocumentAttachments(id, attachments) {
     });
 }
 
+async function getSupplierPriceHistory(supplierId, limit = 20) {
+    const snapshot = await getDb().collection('documents')
+        .where('supplier_id', '==', supplierId)
+        .where('status', 'in', ['Sent', 'Quoted', 'Ordered', 'Delivered', 'Confirmed'])
+        .orderBy('created_at', 'desc')
+        .limit(limit)
+        .get();
+
+    // Build composite keys from structured line item fields
+    const priceMap = {};
+    snapshot.forEach(doc => {
+        const data = doc.data();
+        const lineItems = data.line_items || [];
+        const docDate = data.created_at?.toDate?.() || new Date();
+
+        lineItems.forEach(item => {
+            const price = item.unit_price || item.quoted_price;
+            if (!price || price <= 0) return;
+
+            const parts = [];
+            if (item.product_type) parts.push(item.product_type);
+            if (item.glass_type) parts.push(item.glass_type);
+            if (item.thickness) parts.push(item.thickness);
+            if (item.series) parts.push(item.series);
+            if (item.width && item.height) parts.push(`${item.width} x ${item.height}`);
+            if (item.tint_coating) parts.push(item.tint_coating);
+            if (item.product_category) parts.push(item.product_category);
+            if (item.frame_color) parts.push(item.frame_color);
+
+            if (parts.length === 0) return;
+
+            const key = parts.join('|').toLowerCase();
+            const label = parts.join(' - ');
+
+            if (!priceMap[key] || new Date(priceMap[key].date) < docDate) {
+                priceMap[key] = {
+                    label,
+                    price: Number(price),
+                    qty: item.qty || 1,
+                    date: docDate.toISOString(),
+                    doc_number: data.doc_number,
+                    doc_type: data.doc_type,
+                };
+            }
+        });
+    });
+
+    return Object.values(priceMap).sort((a, b) => new Date(b.date) - new Date(a.date));
+}
+
 async function searchDocuments(filters) {
     let query = getDb().collection('documents');
 
@@ -299,6 +349,7 @@ module.exports = {
     updatePdfUrl,
     updateDriveUrl,
     updateDocumentAttachments,
+    getSupplierPriceHistory,
     searchDocuments,
     getRecentDocuments,
     deleteDocument,
