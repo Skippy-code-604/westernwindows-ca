@@ -268,6 +268,36 @@ router.patch('/:id/confirmation', async (req, res) => {
     }
 });
 
+// Update attachments on a document (e.g., manufacturer quote PDFs on a PO)
+router.put('/:id/attachments', async (req, res) => {
+    try {
+        const { attachments } = req.body;
+        if (!Array.isArray(attachments)) {
+            return res.status(400).json({ error: 'Missing attachments array' });
+        }
+
+        const doc = await store.getDocumentById(req.params.id);
+        if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+        // Validate and sanitize attachment objects
+        const sanitized = attachments.map(a => ({
+            name: a.name || 'unnamed',
+            size: a.size || 0,
+            type: a.type || 'application/octet-stream',
+            storagePath: a.storagePath || '',
+            url: a.url || '',
+            uploadedAt: a.uploadedAt || new Date().toISOString(),
+        }));
+
+        await store.updateDocumentAttachments(req.params.id, sanitized);
+        const updated = await store.getDocumentById(req.params.id);
+        res.json(updated);
+    } catch (err) {
+        console.error('Attachments update error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Delete a document
 router.delete('/:id', async (req, res) => {
     try {
