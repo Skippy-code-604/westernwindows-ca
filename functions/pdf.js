@@ -138,10 +138,11 @@ function generatePDF(document, lineItems, supplierType) {
         autoTable(doc, {
             startY: y, margin: { left: margin, right: margin },
             head: [glassHeaders], body: glassRows, theme: 'striped',
-            headStyles: { fillColor: darkBlue, fontSize: 7, fontStyle: 'bold' },
+            headStyles: { fillColor: darkBlue, fontSize: 7, fontStyle: 'bold', cellPadding: 4 },
             bodyStyles: { fontSize: 7 },
             columnStyles: { 0: { cellWidth: 8 }, 1: { cellWidth: 10 } },
-            styles: { cellPadding: 2, overflow: 'linebreak' },
+            styles: { cellPadding: 3, overflow: 'linebreak' },
+            alternateRowStyles: { fillColor: [245, 247, 250] },
         });
     } else {
         const windowHeaders = ['#', 'Qty', 'Type', 'Series', 'W x H', 'Frame Color', 'Frame Type', 'Glass Pkg', 'Grid', 'Screen'];
@@ -168,10 +169,11 @@ function generatePDF(document, lineItems, supplierType) {
         autoTable(doc, {
             startY: y, margin: { left: margin, right: margin },
             head: [windowHeaders], body: windowRows, theme: 'striped',
-            headStyles: { fillColor: darkBlue, fontSize: 7, fontStyle: 'bold' },
+            headStyles: { fillColor: darkBlue, fontSize: 7, fontStyle: 'bold', cellPadding: 4 },
             bodyStyles: { fontSize: 7 },
             columnStyles: { 0: { cellWidth: 8 }, 1: { cellWidth: 10 } },
-            styles: { cellPadding: 2, overflow: 'linebreak' },
+            styles: { cellPadding: 3, overflow: 'linebreak' },
+            alternateRowStyles: { fillColor: [245, 247, 250] },
         });
     }
 
@@ -237,14 +239,55 @@ function generatePDF(document, lineItems, supplierType) {
         y += noteLines.length * 4 + 5;
     }
 
-    // --- FOOTER ---
-    const footerY = doc.internal.pageSize.getHeight() - 15;
-    doc.setDrawColor(...medBlue);
-    doc.setLineWidth(0.3);
-    doc.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
-    doc.setFontSize(7);
-    doc.setTextColor(120, 120, 120);
-    doc.text('Western Windows | Windows, Doors & Skylights | westernwindows.ca | info@westernwindows.ca', pageWidth / 2, footerY, { align: 'center' });
+    // --- TERMS & CONDITIONS (POs only) ---
+    if (document.doc_type === 'PO') {
+        const pageHeight = doc.internal.pageSize.getHeight();
+        // Check if we need a new page for terms
+        if (y > pageHeight - 60) {
+            doc.addPage();
+            y = 20;
+        }
+
+        y += 3;
+        doc.setFontSize(7);
+        doc.setTextColor(130, 130, 130);
+        doc.setFont('helvetica', 'bold');
+        doc.text('TERMS & CONDITIONS', margin, y);
+        doc.setFont('helvetica', 'normal');
+        y += 5;
+
+        const terms = [
+            'All prices are in Canadian dollars unless otherwise specified.',
+            'Payment terms: Net 30 days from date of invoice.',
+            'Delivery dates are estimates and subject to change.',
+            'Western Windows reserves the right to cancel orders with 48 hours notice.',
+            'All materials remain property of Western Windows until installed.',
+        ];
+        terms.forEach(term => {
+            doc.text(`\u2022 ${term}`, margin, y);
+            y += 4;
+        });
+    }
+
+    // --- FOOTER + PAGE NUMBERS (all pages) ---
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        const footerY = doc.internal.pageSize.getHeight() - 15;
+
+        // Company footer line
+        doc.setDrawColor(...medBlue);
+        doc.setLineWidth(0.3);
+        doc.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
+        doc.setFontSize(7);
+        doc.setTextColor(120, 120, 120);
+        doc.text('Western Windows | Windows, Doors & Skylights | westernwindows.ca | info@westernwindows.ca', pageWidth / 2, footerY, { align: 'center' });
+
+        // Page number
+        doc.setFontSize(7);
+        doc.setTextColor(160, 160, 160);
+        doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin, footerY + 5, { align: 'right' });
+    }
 
     return doc;
 }
