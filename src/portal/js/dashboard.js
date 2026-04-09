@@ -14,6 +14,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('history-card').addEventListener('click', () => {
     window.location.href = '/portal/history.html';
   });
+  document.getElementById('projects-card').addEventListener('click', () => {
+    window.location.href = '/portal/projects.html';
+  });
 
   // Load quick stats and recent activity
   loadStats();
