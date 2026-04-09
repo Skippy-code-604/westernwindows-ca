@@ -66,6 +66,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('add-line-btn').addEventListener('click', addLineItem);
   document.getElementById('save-draft-btn').addEventListener('click', saveDraft);
   document.getElementById('preview-btn').addEventListener('click', previewAndSend);
+
+  // Price history panel toggle
+  const phToggle = document.getElementById('price-history-toggle');
+  if (phToggle) {
+    phToggle.addEventListener('click', () => {
+      const body = document.getElementById('price-history-body');
+      const chevron = document.getElementById('price-history-chevron');
+      const isOpen = body.style.display !== 'none';
+      body.style.display = isOpen ? 'none' : 'block';
+      chevron.textContent = isOpen ? '▼' : '▲';
+    });
+  }
+
+  // Load price history for POs
+  if (currentDocType === 'PO' && currentSupplier) {
+    loadPriceHistory(currentSupplier.id);
+  }
 });
 
 async function loadSupplier(id) {
@@ -84,6 +101,51 @@ async function loadSupplier(id) {
   document.getElementById('page-subtitle').textContent = isRFQ
     ? 'Request a quote from this supplier'
     : 'Create a purchase order for this supplier';
+}
+
+async function loadPriceHistory(supplierId) {
+  try {
+    const res = await apiFetch(`/suppliers/${supplierId}/price-history`);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    const prices = data.prices || [];
+    if (prices.length === 0) return;
+
+    // Show the panel
+    const card = document.getElementById('price-history-card');
+    if (card) card.style.display = 'block';
+
+    // Render price rows
+    const list = document.getElementById('price-history-list');
+    if (!list) return;
+
+    list.innerHTML = `
+      <table class="price-history-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Qty</th>
+            <th>Price</th>
+            <th>Document</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${prices.map(p => `
+            <tr>
+              <td class="ph-label">${p.label}</td>
+              <td>${p.qty}</td>
+              <td class="ph-price">$${p.price.toFixed(2)}</td>
+              <td><span class="badge badge-${p.doc_type.toLowerCase()}">${p.doc_number}</span></td>
+              <td class="text-muted">${new Date(p.date).toLocaleDateString('en-CA')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (err) {
+    console.warn('Could not load price history:', err);
+  }
 }
 
 async function loadMultiSuppliers(ids) {

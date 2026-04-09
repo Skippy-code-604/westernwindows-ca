@@ -1520,6 +1520,71 @@ span.attachment-item-name:hover {
   white-space: nowrap;
 }
 
+/* ---- Price History Panel ---- */
+.price-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+}
+
+.price-history-chevron {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.price-history-body {
+  margin-top: 12px;
+  border-top: 1px solid var(--glass-border);
+  padding-top: 12px;
+}
+
+.price-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.price-history-table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.price-history-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.price-history-table tbody tr:nth-child(even) {
+  background: rgba(255,255,255,0.02);
+}
+
+.price-history-table tbody tr:hover {
+  background: rgba(106, 175, 230, 0.06);
+}
+
+.ph-label {
+  color: var(--text-primary);
+  font-weight: 500;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ph-price {
+  color: var(--amber);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- Responsive ---- */
 @media (max-width: 768px) {
   .navbar {

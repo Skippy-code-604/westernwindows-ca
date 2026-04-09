@@ -111,6 +111,18 @@
                         </div>
                     </div>
                 </div>
+                <!-- Price History (PO only, loaded dynamically) -->
+                <div class="card mb-2" id="price-history-card" style="display:none;">
+                    <div class="price-history-header" id="price-history-toggle" style="cursor:pointer;">
+                        <h3 class="section-header" style="margin-bottom:0; border-bottom:none; padding-bottom:0;">
+                            💡 Recent Prices from This Supplier
+                        </h3>
+                        <span class="price-history-chevron" id="price-history-chevron">▼</span>
+                    </div>
+                    <div id="price-history-body" class="price-history-body" style="display:none;">
+                        <div id="price-history-list" class="price-history-list"></div>
+                    </div>
+                </div>
 
                 <!-- Line Items -->
                 <div class="card mb-2">
