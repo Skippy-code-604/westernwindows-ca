@@ -200,20 +200,34 @@ function renderAttachmentList() {
 }
 
 // ---- Wire up drag-drop and click-to-browse ----
+// NOTE: This runs as a module with top-level await, so DOMContentLoaded
+// has already fired by the time we get here. We init immediately instead.
 
-document.addEventListener('DOMContentLoaded', () => {
+// Prevent browser from opening dropped files anywhere on the page
+document.addEventListener('dragover', (e) => e.preventDefault());
+document.addEventListener('drop', (e) => e.preventDefault());
+
+let dropzoneBound = false;
+
+function initDropzone() {
+    if (dropzoneBound) return;
+
     const dropzone = document.getElementById('attachment-dropzone');
     const fileInput = document.getElementById('attachment-input');
 
     if (!dropzone || !fileInput) return;
 
+    dropzoneBound = true;
+
     // Click to browse
-    dropzone.addEventListener('click', () => fileInput.click());
+    dropzone.addEventListener('click', (e) => {
+        e.stopPropagation();
+        fileInput.click();
+    });
 
     // File selected via browser dialog
     fileInput.addEventListener('change', () => {
         if (fileInput.files.length > 0) {
-            // Queue files — actual upload happens on save (needs docId)
             queueFiles(fileInput.files);
             fileInput.value = ''; // Reset for re-selection
         }
@@ -222,21 +236,35 @@ document.addEventListener('DOMContentLoaded', () => {
     // Drag events
     dropzone.addEventListener('dragover', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         dropzone.classList.add('attachment-dropzone-active');
     });
 
-    dropzone.addEventListener('dragleave', () => {
+    dropzone.addEventListener('dragleave', (e) => {
+        e.stopPropagation();
         dropzone.classList.remove('attachment-dropzone-active');
     });
 
     dropzone.addEventListener('drop', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         dropzone.classList.remove('attachment-dropzone-active');
         if (e.dataTransfer.files.length > 0) {
             queueFiles(e.dataTransfer.files);
         }
     });
+
+    console.log('[attachments] Dropzone initialized');
+}
+
+// Try to init immediately (works on form page where elements exist at load)
+initDropzone();
+
+// Also watch for elements appearing later (preview page shows section dynamically)
+const observer = new MutationObserver(() => {
+    if (!dropzoneBound) initDropzone();
 });
+observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
 
 // Pending files that have been selected but not uploaded yet (need docId first)
 const pendingFiles = [];
