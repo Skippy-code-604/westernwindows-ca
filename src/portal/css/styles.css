@@ -1353,6 +1353,173 @@ tbody tr:last-child {
   border: none;
 }
 
+/* ---- Attachments (PO Quote Files) ---- */
+.attachment-dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 20px;
+  border: 2px dashed var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  cursor: pointer;
+  transition: all var(--transition);
+  min-height: 80px;
+}
+
+.attachment-dropzone:hover {
+  border-color: var(--blue);
+  background: rgba(70, 130, 180, 0.05);
+}
+
+.attachment-dropzone-active {
+  border-color: var(--amber) !important;
+  background: rgba(245, 166, 35, 0.06) !important;
+  box-shadow: 0 0 0 3px rgba(245, 166, 35, 0.12);
+}
+
+.attachment-dropzone-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.attachment-dropzone-icon {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.attachment-dropzone-text {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.attachment-dropzone-text strong {
+  color: var(--blue-light);
+}
+
+.attachment-dropzone-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.attachment-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition);
+}
+
+.attachment-item:hover {
+  border-color: var(--border-light);
+}
+
+.attachment-item-pending {
+  border-style: dashed;
+  opacity: 0.85;
+}
+
+.attachment-item-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.attachment-item-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.attachment-item-name {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--blue-light);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attachment-item-name:hover {
+  text-decoration: underline;
+}
+
+span.attachment-item-name {
+  color: var(--text-primary);
+}
+
+span.attachment-item-name:hover {
+  text-decoration: none;
+}
+
+.attachment-item-size {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.attachment-item-remove,
+.attachment-pending-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+
+.attachment-item-remove:hover,
+.attachment-pending-remove:hover {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.attachment-uploading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.attachment-progress-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.attachment-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--blue) 0%, var(--amber) 100%);
+  border-radius: 3px;
+  transition: width 300ms ease;
+}
+
+.attachment-progress-text {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 /* ---- Responsive ---- */
 @media (max-width: 768px) {
   .navbar {

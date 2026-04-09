@@ -171,12 +171,23 @@ async function loadExistingDocument(id) {
   document.getElementById('page-title').textContent = `Edit ${doc.doc_number}`;
   document.getElementById('page-subtitle').textContent = doc.supplier_name;
 
+  // Show/hide quote reference + attachments for this doc type
+  const quoteRefGroup = document.getElementById('quote-reference-group');
+  if (quoteRefGroup) {
+    quoteRefGroup.style.display = doc.doc_type === 'PO' ? 'block' : 'none';
+  }
+
   // Load line items
   for (const item of lineItems) {
     addLineItem(item);
   }
 
   if (lineItems.length === 0) addLineItem();
+
+  // Load existing attachments
+  if (window.attachmentManager && doc.attachments) {
+    window.attachmentManager.loadExisting(doc.attachments);
+  }
 }
 
 // ---- Line Item Management ----
@@ -806,6 +817,17 @@ async function saveDraft() {
 
     const result = await res.json();
     editingDocId = result.document.id;
+
+    // Upload any pending quote attachments (PO only)
+    if (window.attachmentManager && window.attachmentManager.hasPendingFiles()) {
+      await window.attachmentManager.uploadPendingFiles(editingDocId);
+      // Persist attachment metadata to the document
+      await apiFetch(`/documents/${editingDocId}/attachments`, {
+        method: 'PUT',
+        body: { attachments: window.attachmentManager.getAttachments() },
+      });
+    }
+
     showToast('Draft saved successfully!', 'success');
 
   } catch (err) {
@@ -865,6 +887,16 @@ async function previewAndSend() {
 
     const result = await res.json();
     const docId = result.document.id;
+
+    // Upload any pending quote attachments (PO only)
+    if (window.attachmentManager && window.attachmentManager.hasPendingFiles()) {
+      await window.attachmentManager.uploadPendingFiles(docId);
+      // Persist attachment metadata to the document
+      await apiFetch(`/documents/${docId}/attachments`, {
+        method: 'PUT',
+        body: { attachments: window.attachmentManager.getAttachments() },
+      });
+    }
 
     // Navigate to preview
     window.location.href = `/portal/preview.html?id=${docId}`;
