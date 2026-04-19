@@ -2,14 +2,8 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
 
-const firebaseConfig = {
-    projectId: "western-windows-ca",
-    appId: "1:753317905180:web:e2c0313352cb0e025ff0d9",
-    storageBucket: "western-windows-ca.firebasestorage.app",
-    apiKey: "AIzaSyD8gtXc380asHo3E2K95ZFxDu1-NjJSRlE",
-    authDomain: "western-windows-ca.firebaseapp.com",
-    messagingSenderId: "753317905180",
-};
+// Load config from Firebase Hosting's reserved URL (not hardcoded in source)
+const firebaseConfig = await fetch('/__/firebase/init.json').then(r => r.json());
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
