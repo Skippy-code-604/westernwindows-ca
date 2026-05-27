@@ -34,13 +34,14 @@ type GlassThickness = '1/4' | '3/8' | '1/2' | '5/8' | '3/4';
 type AppView = 'project-manager' | 'unit-editor';
 
 // IGU types
-type LiteGlassType = 'clear' | 'tempered' | 'heat-strengthened' | 'laminated' | 'lam-tempered';
+type LiteGlassType = 'clear' | 'tempered' | 'heat-strengthened' | 'laminated' | 'lam-tempered' | 'lam-hs';
 type LiteTint = 'clear' | 'bronze' | 'grey' | 'green' | 'blue';
 type LiteThicknessMM = '3' | '4' | '5' | '6' | '8' | '10' | '12';
 type SpacerType = 'aluminum' | 'superspacer' | 'tgi' | 'swisspacer' | 'intercept' | 'foam';
 type SpacerWidthMM = '6' | '8' | '10' | '11' | '12' | '13' | '14' | '16' | '19';
 type GasFill = 'air' | 'argon-90' | 'argon-95' | 'krypton' | 'argon-krypton';
 type IguBuild = 'single' | 'double' | 'triple';
+type LamInterlayer = 'pvb-0.38' | 'pvb-0.76' | 'pvb-1.52' | 'sgp' | 'eva' | 'ionoplast';
 
 interface LiteSpec {
   thicknessMM: LiteThicknessMM;
@@ -50,6 +51,7 @@ interface LiteSpec {
   lowEManufacturer?: string;
   lowEProduct?: string;
   lowESurface?: number;
+  interlayer?: LamInterlayer; // for laminated / lam-tempered / lam-hs
 }
 interface SpacerSpec {
   type: SpacerType;
@@ -216,11 +218,21 @@ const GAS_FILLS: { value: GasFill; label: string }[] = [
 ];
 
 const LITE_GLASS_TYPES: { value: LiteGlassType; label: string }[] = [
-  { value: 'clear',          label: 'Clear Annealed' },
-  { value: 'tempered',       label: 'Tempered (HS)' },
+  { value: 'clear',             label: 'Clear Annealed' },
+  { value: 'tempered',          label: 'Tempered' },
   { value: 'heat-strengthened', label: 'Heat Strengthened' },
-  { value: 'laminated',      label: 'Laminated' },
-  { value: 'lam-tempered',   label: 'Laminated Tempered' },
+  { value: 'laminated',         label: 'Laminated (Ann)' },
+  { value: 'lam-tempered',      label: 'Lam Tempered' },
+  { value: 'lam-hs',            label: 'Lam Heat Strengthened' },
+];
+
+const INTERLAYERS: { value: LamInterlayer; label: string; mm: number }[] = [
+  { value: 'pvb-0.38',  label: '0.38mm PVB (standard)',   mm: 0.38 },
+  { value: 'pvb-0.76',  label: '0.76mm PVB',              mm: 0.76 },
+  { value: 'pvb-1.52',  label: '1.52mm PVB (heavy)',      mm: 1.52 },
+  { value: 'sgp',       label: 'SentryGlas (SGP)',        mm: 0.89 },
+  { value: 'eva',       label: 'EVA',                     mm: 0.38 },
+  { value: 'ionoplast', label: 'Ionoplast',               mm: 0.89 },
 ];
 
 const LITE_TINTS: { value: LiteTint; label: string; color: string }[] = [
@@ -1457,34 +1469,57 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
 
                   {projectMode === 'glass' && (
                     <div className="space-y-2">
-                      <div>
-                        <label className="block text-xs font-semibold mb-1 text-neutral-600">Glass Type</label>
-                        <select value={(selectedNode as PaneNode).glassType || 'tempered'}
-                          onChange={e => updateProp('glassType', e.target.value)}
-                          className="w-full p-2 border border-neutral-300 rounded focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-xs">
-                          {GLASS_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold mb-1.5 text-neutral-600">Thickness</label>
-                        <div className="flex gap-1 flex-wrap">
-                          {(['1/4', '3/8', '1/2', '5/8', '3/4'] as GlassThickness[]).map(t => (
-                            <button key={t} onClick={() => updateProp('glassThickness', t)}
-                              className={`px-2 py-0.5 rounded border text-xs font-mono transition-colors
-                                ${(selectedNode as PaneNode).glassThickness === t ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-neutral-300 hover:bg-neutral-50'}`}>
-                              {t}"
-                            </button>
-                          ))}
+                      {glazingSpec.build === 'single' ? (
+                        // Single-lite: show per-pane glass type, thickness, edge finish
+                        <>
+                          <div>
+                            <label className="block text-xs font-semibold mb-1 text-neutral-600">Glass Type</label>
+                            <select value={(selectedNode as PaneNode).glassType || 'tempered'}
+                              onChange={e => updateProp('glassType', e.target.value)}
+                              className="w-full p-2 border border-neutral-300 rounded focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-xs">
+                              {GLASS_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold mb-1.5 text-neutral-600">Thickness</label>
+                            <div className="flex gap-1 flex-wrap">
+                              {(['1/4', '3/8', '1/2', '5/8', '3/4'] as GlassThickness[]).map(t => (
+                                <button key={t} onClick={() => updateProp('glassThickness', t)}
+                                  className={`px-2 py-0.5 rounded border text-xs font-mono transition-colors
+                                    ${(selectedNode as PaneNode).glassThickness === t ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-neutral-300 hover:bg-neutral-50'}`}>
+                                  {t}"
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold mb-1 text-neutral-600">Edge Finish</label>
+                            <select value={(selectedNode as PaneNode).edgeFinish || 'polished'}
+                              onChange={e => updateProp('edgeFinish', e.target.value)}
+                              className="w-full p-2 border border-neutral-300 rounded focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-xs">
+                              {EDGE_FINISHES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                            </select>
+                          </div>
+                        </>
+                      ) : (
+                        // IGU build: glass spec lives in the Glazing Spec panel
+                        <div className="p-2.5 bg-blue-50 border border-blue-200 rounded text-[10px] text-blue-700 space-y-1">
+                          <p className="font-bold text-blue-800">IGU — {glazingSpec.build.toUpperCase()}</p>
+                          <p>
+                            <span className="font-semibold">Lite 1:</span> {LITE_GLASS_TYPES.find(t => t.value === glazingSpec.lite1.glassType)?.label} {glazingSpec.lite1.thicknessMM}mm
+                            {glazingSpec.lite1.hasLowE && glazingSpec.lite1.lowEProduct ? ` + ${glazingSpec.lite1.lowEProduct}` : ''}
+                          </p>
+                          {glazingSpec.lite2 && (
+                            <p><span className="font-semibold">Lite 2:</span> {LITE_GLASS_TYPES.find(t => t.value === glazingSpec.lite2!.glassType)?.label} {glazingSpec.lite2.thicknessMM}mm
+                              {glazingSpec.lite2.hasLowE && glazingSpec.lite2.lowEProduct ? ` + ${glazingSpec.lite2.lowEProduct}` : ''}
+                            </p>
+                          )}
+                          {glazingSpec.lite3 && (
+                            <p><span className="font-semibold">Lite 3:</span> {LITE_GLASS_TYPES.find(t => t.value === glazingSpec.lite3!.glassType)?.label} {glazingSpec.lite3.thicknessMM}mm</p>
+                          )}
+                          <p className="text-blue-500 italic mt-1">Edit full spec in Glazing Spec panel ↓</p>
                         </div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold mb-1 text-neutral-600">Edge Finish</label>
-                        <select value={(selectedNode as PaneNode).edgeFinish || 'polished'}
-                          onChange={e => updateProp('edgeFinish', e.target.value)}
-                          className="w-full p-2 border border-neutral-300 rounded focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-xs">
-                          {EDGE_FINISHES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
-                        </select>
-                      </div>
+                      )}
 
                       {/* Cutout placement */}
                       <div className="space-y-2">
@@ -1765,6 +1800,24 @@ function LiteSection({ lite, liteNum, onChange }: {
           {LITE_GLASS_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
       </div>
+
+      {/* Interlayer — only for laminated types */}
+      {(lite.glassType === 'laminated' || lite.glassType === 'lam-tempered' || lite.glassType === 'lam-hs') && (
+        <div>
+          <label className="block text-[10px] text-neutral-500 mb-1">Interlayer</label>
+          <select value={lite.interlayer || 'pvb-0.76'} onChange={e => onChange({ ...lite, interlayer: e.target.value as LamInterlayer })}
+            className="w-full text-xs border border-neutral-300 rounded px-1.5 py-1 bg-white outline-none focus:ring-1 focus:ring-blue-400">
+            {INTERLAYERS.map(il => <option key={il.value} value={il.value}>{il.label}</option>)}
+          </select>
+          <p className="text-[9px] text-neutral-400 mt-1">
+            {(() => {
+              const il = INTERLAYERS.find(x => x.value === (lite.interlayer || 'pvb-0.76'));
+              const halfGlass = ((Number(lite.thicknessMM) - (il?.mm || 0.76)) / 2).toFixed(2);
+              return `≈ ${halfGlass}mm + ${il?.mm}mm interlayer + ${halfGlass}mm`;
+            })()}
+          </p>
+        </div>
+      )}
 
       {/* Tint */}
       <div>
