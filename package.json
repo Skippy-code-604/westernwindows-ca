@@ -1,0 +1,46 @@
+{
+  "name": "fenestration-pro",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "concurrently -k \"npm run vite\" \"npm run electron:wait\"",
+    "vite": "vite",
+    "electron:wait": "wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .",
+    "build": "tsc && vite build",
+    "dist": "npm run build && electron-builder --win --config"
+  },
+  "build": {
+    "appId": "com.fenestration.pro",
+    "productName": "Fenestration Pro",
+    "directories": { "output": "release" },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "win": {
+      "target": [{ "target": "portable", "arch": ["x64"] }],
+      "icon": "public/icon.ico"
+    }
+  },
+  "dependencies": {
+    "lucide-react": "^0.435.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0-beta.8",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^9.0.0",
+    "cross-env": "^7.0.3",
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0",
+    "tailwindcss": "^4.0.0-beta.8",
+    "typescript": "^5.5.2",
+    "vite": "^5.3.1",
+    "wait-on": "^8.0.0"
+  }
+}

@@ -1,0 +1,1435 @@
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
+import {
+  Settings, Maximize2, XSquare, GripHorizontal, GripVertical,
+  Download, Trash2, MousePointer2, Save, FolderOpen, Printer,
+  Undo2, Redo2, Square, Plus, ArrowLeft, Copy, Edit2, CheckCircle
+} from 'lucide-react';
+
+// ─────────────────────────────────────────────
+// TYPE DECLARATIONS
+// ─────────────────────────────────────────────
+declare global {
+  interface Window {
+    electronAPI?: {
+      saveFile: (content: string) => Promise<{ success: boolean; filePath?: string }>;
+      openFile: () => Promise<{ success: boolean; content?: string }>;
+      exportSVG: (svg: string) => Promise<{ success: boolean }>;
+      print: () => Promise<void>;
+    };
+  }
+}
+
+type ProjectMode = 'window' | 'glass';
+type WindowPaneType =
+  | 'fixed' | 'slide-l' | 'slide-r' | 'slide-u' | 'slide-d'
+  | 'casement-l' | 'casement-r' | 'awning' | 'hopper'
+  | 'double-hung' | 'tilt-turn'
+  | 'patio-xo' | 'patio-ox' | 'patio-xox' | 'patio-oxxxo'
+  | 'bifold';
+type GlassType = 'clear' | 'tempered' | 'laminated' | 'low-e' | 'frosted' | 'tinted' | 'starphire';
+type EdgeFinish = 'seamed' | 'flat-ground' | 'polished' | 'beveled';
+type GlassThickness = '1/4' | '3/8' | '1/2' | '5/8' | '3/4';
+type AppView = 'project-manager' | 'unit-editor';
+
+// IGU types
+type LiteGlassType = 'clear' | 'tempered' | 'heat-strengthened' | 'laminated' | 'lam-tempered';
+type LiteTint = 'clear' | 'bronze' | 'grey' | 'green' | 'blue';
+type LiteThicknessMM = '3' | '4' | '5' | '6' | '8' | '10' | '12';
+type SpacerType = 'aluminum' | 'superspacer' | 'tgi' | 'swisspacer' | 'intercept' | 'foam';
+type SpacerWidthMM = '6' | '8' | '10' | '11' | '12' | '13' | '14' | '16' | '19';
+type GasFill = 'air' | 'argon-90' | 'argon-95' | 'krypton' | 'argon-krypton';
+type IguBuild = 'single' | 'double' | 'triple';
+
+interface LiteSpec {
+  thicknessMM: LiteThicknessMM;
+  glassType: LiteGlassType;
+  tint: LiteTint;
+  hasLowE: boolean;
+  lowEManufacturer?: string;
+  lowEProduct?: string;
+  lowESurface?: number;
+}
+interface SpacerSpec {
+  type: SpacerType;
+  widthMM: SpacerWidthMM;
+}
+interface GlazingSpec {
+  build: IguBuild;
+  lite1: LiteSpec;
+  spacer1?: SpacerSpec;
+  gasFill1?: GasFill;
+  lite2?: LiteSpec;
+  spacer2?: SpacerSpec;
+  gasFill2?: GasFill;
+  lite3?: LiteSpec;
+}
+
+interface PaneNode {
+  id: string; type: 'pane'; paneType: WindowPaneType;
+  glassType?: GlassType; glassThickness?: GlassThickness;
+  edgeFinish?: EdgeFinish; cutouts?: number;
+}
+interface SplitNode {
+  id: string; type: 'split'; direction: 'V' | 'H';
+  ratio: number; children: TreeNode[];
+}
+type TreeNode = PaneNode | SplitNode;
+
+interface Unit {
+  id: string;
+  name: string;
+  location: string;
+  quantity: number;
+  projectMode: ProjectMode;
+  overallWidth: number;
+  overallHeight: number;
+  tree: TreeNode;
+  glazingSpec: GlazingSpec;
+}
+
+interface Project {
+  id: string;
+  name: string;
+  customer: string;
+  date: string;
+  notes: string;
+  units: Unit[];
+}
+
+interface EditorState {
+  tree: TreeNode;
+  overallWidth: number;
+  overallHeight: number;
+  projectMode: ProjectMode;
+}
+
+// ─────────────────────────────────────────────
+// CONSTANTS
+// ─────────────────────────────────────────────
+const uuid = () => Math.random().toString(36).substr(2, 9);
+
+function toFraction(dec: number): string {
+  if (dec <= 0) return '0"';
+  const whole = Math.floor(dec);
+  const frac = dec - whole;
+  const sixteenths = Math.round(frac * 16);
+  if (sixteenths === 0) return `${whole}"`;
+  if (sixteenths === 16) return `${whole + 1}"`;
+  const gcd = (a: number, b: number): number => b ? gcd(b, a % b) : a;
+  const d = gcd(sixteenths, 16);
+  return `${whole > 0 ? whole + '-' : ''}${sixteenths / d}/${16 / d}"`;
+}
+
+const FRAME_THICKNESS = 3.25;
+const MULLION_THICKNESS = 2.0;
+const SASH_PROFILE = 1.5;
+const SNAP_POINTS = [1 / 3, 1 / 2, 2 / 3];
+const SNAP_ZONE = 0.03;
+
+const WINDOW_PANE_TYPES: { value: WindowPaneType; label: string; group: string }[] = [
+  { value: 'fixed', label: 'Fixed (Picture)', group: 'Fixed' },
+  { value: 'slide-l', label: 'Slider — Active Left (XO)', group: 'Sliding' },
+  { value: 'slide-r', label: 'Slider — Active Right (OX)', group: 'Sliding' },
+  { value: 'patio-xo', label: 'Patio XO — 2-lite, active left', group: 'Sliding' },
+  { value: 'patio-ox', label: 'Patio OX — 2-lite, active right', group: 'Sliding' },
+  { value: 'patio-xox', label: 'Patio XOX — 3-lite, center active', group: 'Sliding' },
+  { value: 'patio-oxxxo', label: 'Patio OXXXO — 5-lite, 3 active', group: 'Sliding' },
+  { value: 'slide-u', label: 'Single Hung — Up', group: 'Hung' },
+  { value: 'slide-d', label: 'Single Hung — Down', group: 'Hung' },
+  { value: 'double-hung', label: 'Double Hung', group: 'Hung' },
+  { value: 'casement-l', label: 'Casement — Hinged Left', group: 'Casement' },
+  { value: 'casement-r', label: 'Casement — Hinged Right', group: 'Casement' },
+  { value: 'awning', label: 'Awning — Hinged Top', group: 'Casement' },
+  { value: 'hopper', label: 'Hopper — Hinged Bottom', group: 'Casement' },
+  { value: 'tilt-turn', label: 'Tilt & Turn', group: 'Casement' },
+  { value: 'bifold', label: 'Bi-fold', group: 'Specialty' },
+];
+
+const GLASS_TYPES: { value: GlassType; label: string }[] = [
+  { value: 'clear', label: 'Clear Annealed' },
+  { value: 'tempered', label: 'Tempered (Safety)' },
+  { value: 'laminated', label: 'Laminated' },
+  { value: 'low-e', label: 'Low-E Coated' },
+  { value: 'frosted', label: 'Frosted / Obscure' },
+  { value: 'tinted', label: 'Tinted' },
+  { value: 'starphire', label: 'Starphire (Ultra-Clear)' },
+];
+
+const EDGE_FINISHES: { value: EdgeFinish; label: string }[] = [
+  { value: 'seamed', label: 'Seamed' },
+  { value: 'flat-ground', label: 'Flat Ground' },
+  { value: 'polished', label: 'Polished' },
+  { value: 'beveled', label: 'Beveled' },
+];
+
+const GLASS_FILL: Record<GlassType, string> = {
+  clear: '#e0f2fe', tempered: '#dbeafe', laminated: '#ede9fe',
+  'low-e': '#d1fae5', frosted: '#f1f5f9', tinted: '#fef9c3', starphire: '#f0fdfa',
+};
+
+// ─── IGU CONSTANTS ───────────────────────────
+const LITE_THICKNESS_MM: { mm: LiteThicknessMM; label: string; frac: string }[] = [
+  { mm: '3', label: '3mm', frac: '1/8"' },
+  { mm: '4', label: '4mm', frac: '5/32"' },
+  { mm: '5', label: '5mm', frac: '3/16"' },
+  { mm: '6', label: '6mm', frac: '1/4"' },
+  { mm: '8', label: '8mm', frac: '5/16"' },
+  { mm: '10', label: '10mm', frac: '3/8"' },
+  { mm: '12', label: '12mm', frac: '1/2"' },
+];
+
+const SPACER_WIDTHS: { mm: SpacerWidthMM; label: string; frac: string }[] = [
+  { mm: '6',  label: '6mm',  frac: '1/4"' },
+  { mm: '8',  label: '8mm',  frac: '5/16"' },
+  { mm: '10', label: '10mm', frac: '3/8"' },
+  { mm: '11', label: '11mm', frac: '7/16"' },
+  { mm: '12', label: '12mm', frac: '1/2"' },
+  { mm: '13', label: '13mm', frac: '—' },
+  { mm: '14', label: '14mm', frac: '9/16"' },
+  { mm: '16', label: '16mm', frac: '5/8"' },
+  { mm: '19', label: '19mm', frac: '3/4"' },
+];
+
+const SPACER_TYPES: { value: SpacerType; label: string }[] = [
+  { value: 'aluminum',    label: 'Aluminum (standard)' },
+  { value: 'superspacer', label: 'Superspacer (TPS)' },
+  { value: 'tgi',         label: 'TGI / Intercept' },
+  { value: 'swisspacer',  label: 'Swisspacer' },
+  { value: 'intercept',   label: 'Intercept U-channel' },
+  { value: 'foam',        label: 'Foam Tape' },
+];
+
+const GAS_FILLS: { value: GasFill; label: string }[] = [
+  { value: 'air',          label: 'Air' },
+  { value: 'argon-90',     label: 'Argon 90%' },
+  { value: 'argon-95',     label: 'Argon 95%' },
+  { value: 'krypton',      label: 'Krypton' },
+  { value: 'argon-krypton',label: 'Argon/Krypton Mix' },
+];
+
+const LITE_GLASS_TYPES: { value: LiteGlassType; label: string }[] = [
+  { value: 'clear',          label: 'Clear Annealed' },
+  { value: 'tempered',       label: 'Tempered (HS)' },
+  { value: 'heat-strengthened', label: 'Heat Strengthened' },
+  { value: 'laminated',      label: 'Laminated' },
+  { value: 'lam-tempered',   label: 'Laminated Tempered' },
+];
+
+const LITE_TINTS: { value: LiteTint; label: string; color: string }[] = [
+  { value: 'clear',  label: 'Clear',  color: '#e0f2fe' },
+  { value: 'bronze', label: 'Bronze', color: '#d97706' },
+  { value: 'grey',   label: 'Grey',   color: '#9ca3af' },
+  { value: 'green',  label: 'Green',  color: '#6ee7b7' },
+  { value: 'blue',   label: 'Blue',   color: '#60a5fa' },
+];
+
+interface LowEProduct { name: string; surfaces: number[]; notes: string; }
+interface LowEManufacturer { name: string; products: LowEProduct[]; }
+
+const LOW_E_DATABASE: LowEManufacturer[] = [
+  { name: 'Cardinal', products: [
+    { name: 'LoE-i89',  surfaces: [1, 4], notes: 'Hard coat — surface 1 (ext) or 4 (int)' },
+    { name: 'LoE-180',  surfaces: [2, 3], notes: 'Single silver — balanced VT/SHGC' },
+    { name: 'LoE-272',  surfaces: [2, 3], notes: 'Dual silver — high VT, balanced' },
+    { name: 'LoE-340',  surfaces: [2, 3], notes: 'High solar control' },
+    { name: 'LoE-366',  surfaces: [2, 3], notes: 'Triple silver — premium performance' },
+  ]},
+  { name: 'Vitro (PPG)', products: [
+    { name: 'Solarban 60',    surfaces: [2], notes: 'Standard dual silver' },
+    { name: 'Solarban 70XL',  surfaces: [2], notes: 'High VT dual silver' },
+    { name: 'Solarban 72',    surfaces: [2], notes: 'Balanced VT and SHGC' },
+    { name: 'Solarban 90',    surfaces: [2], notes: 'High solar control' },
+    { name: 'Solarban R100',  surfaces: [2], notes: 'Triple silver — premium' },
+    { name: 'Vistacool',      surfaces: [2], notes: 'Tinted low-e' },
+  ]},
+  { name: 'AGC', products: [
+    { name: 'Stopray Vision-50', surfaces: [2], notes: 'Solar control, neutral' },
+    { name: 'Stopray Vision-60', surfaces: [2], notes: 'High VT, low SHGC' },
+    { name: 'Planibel LoE',      surfaces: [2], notes: 'General purpose' },
+  ]},
+  { name: 'Guardian', products: [
+    { name: 'ClimaGuard Premium 2',  surfaces: [2], notes: 'Energy Star qualified' },
+    { name: 'SunGuard SNX 62/27',    surfaces: [2], notes: 'High solar control' },
+    { name: 'SunGuard HP Silver 40', surfaces: [2], notes: 'Neutral appearance' },
+    { name: 'UltraClear',            surfaces: [2], notes: 'Low-iron base + LoE' },
+  ]},
+  { name: 'Pilkington', products: [
+    { name: 'Optitherm S3',     surfaces: [3], notes: 'High perf — surface 3 only' },
+    { name: 'Energy Advantage', surfaces: [2], notes: 'Standard energy performance' },
+    { name: 'Optiwhite LoE',    surfaces: [2], notes: 'Low-iron ultra-clear base' },
+  ]},
+];
+
+function calcIguThicknessMM(spec: GlazingSpec): number {
+  const lite = (mm: LiteThicknessMM | undefined) => mm ? Number(mm) : 0;
+  const spacer = (mm: SpacerWidthMM | undefined) => mm ? Number(mm) : 0;
+  if (spec.build === 'single') return lite(spec.lite1.thicknessMM);
+  if (spec.build === 'double') return lite(spec.lite1.thicknessMM) + spacer(spec.spacer1?.widthMM) + lite(spec.lite2?.thicknessMM);
+  return lite(spec.lite1.thicknessMM) + spacer(spec.spacer1?.widthMM) + lite(spec.lite2?.thicknessMM) + spacer(spec.spacer2?.widthMM) + lite(spec.lite3?.thicknessMM);
+}
+
+function mmToFrac(mm: number): string {
+  const inches = mm / 25.4;
+  return toFraction(Math.round(inches * 16) / 16);
+}
+
+// ─────────────────────────────────────────────
+// TREE HELPERS
+// ─────────────────────────────────────────────
+function updateNode(node: TreeNode, id: string, updater: (n: TreeNode) => TreeNode): TreeNode {
+  if (node.id === id) return updater({ ...node });
+  if (node.type === 'split') return { ...node, children: node.children.map(c => updateNode(c, id, updater)) };
+  return node;
+}
+function deleteNode(node: TreeNode, targetId: string): TreeNode | null {
+  if (node.id === targetId) return null;
+  if (node.type === 'split') {
+    const children = node.children.map(c => deleteNode(c, targetId)).filter(Boolean) as TreeNode[];
+    return children.length === 1 ? children[0] : { ...node, children };
+  }
+  return node;
+}
+function findNode(node: TreeNode, id: string): TreeNode | null {
+  if (node.id === id) return node;
+  if (node.type === 'split') for (const c of node.children) { const f = findNode(c, id); if (f) return f; }
+  return null;
+}
+
+const makeInitialPane = (id = 'root'): PaneNode => ({
+  id, type: 'pane', paneType: 'fixed',
+  glassType: 'tempered', glassThickness: '1/2', edgeFinish: 'polished', cutouts: 0,
+});
+
+const makeDefaultLite = (): LiteSpec => ({
+  thicknessMM: '6', glassType: 'clear', tint: 'clear', hasLowE: false,
+});
+
+const makeDefaultGlazing = (): GlazingSpec => ({
+  build: 'double',
+  lite1: { ...makeDefaultLite(), hasLowE: true, lowEManufacturer: 'Cardinal', lowEProduct: 'LoE-272', lowESurface: 2 },
+  spacer1: { type: 'aluminum', widthMM: '12' },
+  gasFill1: 'argon-90',
+  lite2: makeDefaultLite(),
+});
+
+const makeNewUnit = (): Unit => ({
+  id: uuid(), name: 'Unit 1', location: '', quantity: 1,
+  projectMode: 'window', overallWidth: 48, overallHeight: 48,
+  tree: makeInitialPane(),
+  glazingSpec: makeDefaultGlazing(),
+});
+
+const makeNewProject = (): Project => ({
+  id: uuid(), name: 'New Project', customer: '', date: new Date().toISOString().split('T')[0],
+  notes: '', units: [makeNewUnit()],
+});
+
+// ─────────────────────────────────────────────
+// ROOT APP
+// ─────────────────────────────────────────────
+export default function WindowBuilderApp() {
+  const [project, setProject] = useState<Project | null>(null);
+  const [view, setView] = useState<AppView>('project-manager');
+  const [activeUnitId, setActiveUnitId] = useState<string | null>(null);
+  const [projectFile, setProjectFile] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+
+  const activeUnit = useMemo(
+    () => project?.units.find(u => u.id === activeUnitId) || null,
+    [project?.units, activeUnitId]
+  );
+
+  const updateProject = (updater: (p: Project) => Project) => {
+    setProject(prev => prev ? updater(prev) : prev);
+    setIsDirty(true);
+  };
+
+  const openUnit = (unitId: string) => { setActiveUnitId(unitId); setView('unit-editor'); };
+
+  const addUnit = () => {
+    if (!project) return;
+    const unit: Unit = { ...makeNewUnit(), name: `Unit ${project.units.length + 1}` };
+    updateProject(p => ({ ...p, units: [...p.units, unit] }));
+    openUnit(unit.id);
+  };
+
+  const duplicateUnit = (unitId: string) => {
+    const src = project?.units.find(u => u.id === unitId);
+    if (!src) return;
+    const copy: Unit = { ...JSON.parse(JSON.stringify(src)), id: uuid(), name: src.name + ' (copy)' };
+    updateProject(p => ({ ...p, units: [...p.units, copy] }));
+  };
+
+  const deleteUnit = (unitId: string) => {
+    updateProject(p => ({ ...p, units: p.units.filter(u => u.id !== unitId) }));
+  };
+
+  const saveUnit = (unitId: string, updated: Partial<Unit>) => {
+    updateProject(p => ({ ...p, units: p.units.map(u => u.id === unitId ? { ...u, ...updated } : u) }));
+  };
+
+  const handleSaveProject = async () => {
+    if (!project) return;
+    const content = JSON.stringify({ ...project, _v: 2 }, null, 2);
+    if (window.electronAPI) {
+      const res = await window.electronAPI.saveFile(content);
+      if (res.success && res.filePath) { setProjectFile(res.filePath); setIsDirty(false); }
+    } else {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([content], { type: 'application/json' }));
+      a.download = `${project.name}.fenconfig`; a.click();
+      setIsDirty(false);
+    }
+  };
+
+  const handleOpenProject = async () => {
+    if (window.electronAPI) {
+      const res = await window.electronAPI.openFile();
+      if (res.success && res.content) {
+        const loaded = JSON.parse(res.content);
+        delete loaded._v;
+        setProject(loaded as Project);
+        setProjectFile(null);
+        setIsDirty(false);
+        setView('project-manager');
+        setActiveUnitId(null);
+      }
+    }
+  };
+
+  const handleCreateProject = (name: string, customer: string) => {
+    const p: Project = { ...makeNewProject(), name, customer };
+    // Start with no units — user adds them manually
+    p.units = [];
+    setProject(p);
+    setProjectFile(null);
+    setIsDirty(true);
+    setView('project-manager');
+  };
+
+  const handleCloseProject = () => {
+    setProject(null);
+    setProjectFile(null);
+    setIsDirty(false);
+    setView('project-manager');
+    setActiveUnitId(null);
+  };
+
+  // Boot screen — no project loaded
+  if (!project) {
+    return (
+      <StartScreen
+        onCreateProject={handleCreateProject}
+        onOpenProject={handleOpenProject}
+      />
+    );
+  }
+
+  if (view === 'unit-editor' && activeUnit) {
+    return (
+      <UnitEditor
+        unit={activeUnit}
+        projectName={project.name}
+        onBack={() => setView('project-manager')}
+        onSave={(updated) => saveUnit(activeUnit.id, updated)}
+        onSaveProject={handleSaveProject}
+        isDirty={isDirty}
+      />
+    );
+  }
+
+  return (
+    <ProjectManager
+      project={project}
+      projectFile={projectFile}
+      isDirty={isDirty}
+      onOpenUnit={openUnit}
+      onAddUnit={addUnit}
+      onDuplicateUnit={duplicateUnit}
+      onDeleteUnit={deleteUnit}
+      onUpdateProject={updateProject}
+      onSaveProject={handleSaveProject}
+      onOpenProject={handleOpenProject}
+      onCloseProject={handleCloseProject}
+    />
+  );
+}
+
+// ─────────────────────────────────────────────
+// START SCREEN
+// ─────────────────────────────────────────────
+function StartScreen({
+  onCreateProject, onOpenProject
+}: {
+  onCreateProject: (name: string, customer: string) => void;
+  onOpenProject: () => void;
+}) {
+  const [mode, setMode] = useState<'home' | 'new'>('home');
+  const [name, setName] = useState('');
+  const [customer, setCustomer] = useState('');
+
+  return (
+    <div className="min-h-screen bg-neutral-900 flex flex-col items-center justify-center p-8"
+      style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+
+      {/* Logo */}
+      <div className="flex items-center gap-3 mb-10">
+        <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-900/50">
+          <Maximize2 className="w-7 h-7 text-white" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold text-white">Fenestration Pro</h1>
+          <p className="text-sm text-neutral-400">Window & Glass Configurator</p>
+        </div>
+      </div>
+
+      {mode === 'home' && (
+        <div className="w-full max-w-md space-y-3">
+          <button
+            onClick={() => setMode('new')}
+            className="w-full flex items-center gap-4 p-5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors shadow-lg shadow-blue-900/30 group">
+            <div className="w-10 h-10 rounded-lg bg-blue-500 group-hover:bg-blue-400 flex items-center justify-center flex-shrink-0">
+              <Plus className="w-5 h-5" />
+            </div>
+            <div className="text-left">
+              <p className="font-semibold text-base">New Project</p>
+              <p className="text-blue-200 text-sm">Start a fresh project for a job</p>
+            </div>
+          </button>
+
+          <button
+            onClick={onOpenProject}
+            className="w-full flex items-center gap-4 p-5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl transition-colors border border-neutral-700 group">
+            <div className="w-10 h-10 rounded-lg bg-neutral-700 group-hover:bg-neutral-600 flex items-center justify-center flex-shrink-0">
+              <FolderOpen className="w-5 h-5" />
+            </div>
+            <div className="text-left">
+              <p className="font-semibold text-base">Open Project</p>
+              <p className="text-neutral-400 text-sm">Load a saved .fenconfig file</p>
+            </div>
+          </button>
+
+          <p className="text-center text-xs text-neutral-600 pt-4">
+            All windows and glass panels belong to a project.
+          </p>
+        </div>
+      )}
+
+      {mode === 'new' && (
+        <div className="w-full max-w-md bg-neutral-800 rounded-2xl border border-neutral-700 p-6 shadow-2xl">
+          <div className="flex items-center gap-2 mb-5">
+            <button onClick={() => setMode('home')}
+              className="text-neutral-400 hover:text-white transition-colors">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <h2 className="text-white font-bold text-lg">New Project</h2>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1.5">Project Name *</label>
+              <input
+                autoFocus
+                value={name}
+                onChange={e => setName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && name.trim()) onCreateProject(name.trim(), customer.trim()); }}
+                placeholder="e.g. Smith Residence, Unit 4B Reno"
+                className="w-full p-3 bg-neutral-900 border border-neutral-600 rounded-lg text-white placeholder-neutral-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1.5">Customer / Client</label>
+              <input
+                value={customer}
+                onChange={e => setCustomer(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && name.trim()) onCreateProject(name.trim(), customer.trim()); }}
+                placeholder="Customer name (optional)"
+                className="w-full p-3 bg-neutral-900 border border-neutral-600 rounded-lg text-white placeholder-neutral-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm" />
+            </div>
+          </div>
+
+          <div className="flex gap-2 mt-6">
+            <button onClick={() => setMode('home')}
+              className="flex-1 py-2.5 rounded-lg border border-neutral-600 text-neutral-400 hover:text-white hover:border-neutral-500 transition-colors text-sm font-medium">
+              Cancel
+            </button>
+            <button
+              onClick={() => { if (name.trim()) onCreateProject(name.trim(), customer.trim()); }}
+              disabled={!name.trim()}
+              className="flex-1 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2">
+              <CheckCircle className="w-4 h-4" /> Create Project
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// PROJECT MANAGER VIEW
+// ─────────────────────────────────────────────
+function ProjectManager({
+  project, projectFile, isDirty,
+  onOpenUnit, onAddUnit, onDuplicateUnit, onDeleteUnit,
+  onUpdateProject, onSaveProject, onOpenProject, onCloseProject
+}: {
+  project: Project; projectFile: string | null; isDirty: boolean;
+  onOpenUnit: (id: string) => void; onAddUnit: () => void;
+  onDuplicateUnit: (id: string) => void; onDeleteUnit: (id: string) => void;
+  onUpdateProject: (updater: (p: Project) => Project) => void;
+  onSaveProject: () => void; onOpenProject: () => void; onCloseProject: () => void;
+}) {
+  const [editingName, setEditingName] = useState(false);
+  const [nameVal, setNameVal] = useState(project.name);
+
+  const totalArea = project.units.reduce((sum, u) => {
+    const scale = 10;
+    return sum + u.overallWidth * u.overallHeight / 144 * u.quantity;
+  }, 0);
+
+  return (
+    <div className="flex flex-col h-screen bg-neutral-50" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+      {/* Top bar */}
+      <div className="bg-neutral-900 text-white px-6 py-3 flex items-center gap-4 shadow-lg">
+        <div className="flex items-center gap-2 flex-1">
+          <Maximize2 className="w-5 h-5 text-blue-400" />
+          <span className="text-sm font-semibold text-neutral-400">Fenestration Pro</span>
+          <span className="text-neutral-600 mx-1">/</span>
+          {editingName ? (
+            <input
+              autoFocus
+              value={nameVal}
+              onChange={e => setNameVal(e.target.value)}
+              onBlur={() => { onUpdateProject(p => ({ ...p, name: nameVal })); setEditingName(false); }}
+              onKeyDown={e => { if (e.key === 'Enter') { onUpdateProject(p => ({ ...p, name: nameVal })); setEditingName(false); } }}
+              className="bg-neutral-800 text-white border-b border-blue-400 outline-none px-1 text-lg font-bold"
+            />
+          ) : (
+            <button onClick={() => { setNameVal(project.name); setEditingName(true); }}
+              className="text-lg font-bold text-white hover:text-blue-300 flex items-center gap-1.5">
+              {project.name}
+              {isDirty && <span className="text-amber-400 text-xs">●</span>}
+              <Edit2 className="w-3.5 h-3.5 text-neutral-500" />
+            </button>
+          )}
+        </div>
+        <div className="flex gap-2">
+          {[
+            { icon: <Plus className="w-4 h-4" />, label: 'New Project', fn: onCloseProject, style: 'bg-neutral-700 hover:bg-neutral-600' },
+            { icon: <FolderOpen className="w-4 h-4" />, label: 'Open', fn: onOpenProject, style: 'bg-neutral-700 hover:bg-neutral-600' },
+            { icon: <Save className="w-4 h-4" />, label: isDirty ? 'Save*' : 'Saved', fn: onSaveProject, style: isDirty ? 'bg-blue-600 hover:bg-blue-500' : 'bg-neutral-700 hover:bg-neutral-600' },
+          ].map(({ icon, label, fn, style }) => (
+            <button key={label} onClick={fn}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium text-white transition-colors ${style}`}>
+              {icon} {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left — Project metadata */}
+        <div className="w-72 bg-white border-r border-neutral-200 p-5 space-y-4 overflow-y-auto flex-shrink-0">
+          <div>
+            <p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-3">Project Info</p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-neutral-600">Customer</label>
+                <input value={project.customer}
+                  onChange={e => onUpdateProject(p => ({ ...p, customer: e.target.value }))}
+                  placeholder="Customer name"
+                  className="w-full p-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-neutral-600">Date</label>
+                <input type="date" value={project.date}
+                  onChange={e => onUpdateProject(p => ({ ...p, date: e.target.value }))}
+                  className="w-full p-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-neutral-600">Notes</label>
+                <textarea value={project.notes} rows={4}
+                  onChange={e => onUpdateProject(p => ({ ...p, notes: e.target.value }))}
+                  placeholder="Site notes, special requirements..."
+                  className="w-full p-2 border border-neutral-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
+              </div>
+            </div>
+          </div>
+
+          <hr className="border-neutral-100" />
+
+          <div>
+            <p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-3">Summary</p>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-neutral-500">Total Units</span>
+                <span className="font-semibold">{project.units.reduce((s, u) => s + u.quantity, 0)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-neutral-500">Line Items</span>
+                <span className="font-semibold">{project.units.length}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-neutral-500">Est. Glass Area</span>
+                <span className="font-semibold">{totalArea.toFixed(1)} ft²</span>
+              </div>
+            </div>
+          </div>
+
+          <hr className="border-neutral-100" />
+
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 leading-relaxed">
+            <p className="font-semibold mb-1">💡 Quick Start</p>
+            <p>Click any unit to edit it in the canvas. Add more units with the button below. Save the project to keep all units together in one file.</p>
+          </div>
+        </div>
+
+        {/* Right — Unit grid */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-lg font-bold text-neutral-800">
+              Units <span className="text-neutral-400 font-normal text-sm ml-1">({project.units.length})</span>
+            </h2>
+            <button onClick={onAddUnit}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-semibold shadow-sm">
+              <Plus className="w-4 h-4" /> Add Unit
+            </button>
+          </div>
+
+          {project.units.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 text-neutral-400">
+              <Maximize2 className="w-12 h-12 mb-3 opacity-30" />
+              <p className="text-lg font-medium">No units yet</p>
+              <p className="text-sm mt-1">Click "Add Unit" to start designing</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {project.units.map((unit, idx) => (
+                <UnitCard
+                  key={unit.id}
+                  unit={unit}
+                  index={idx}
+                  onOpen={() => onOpenUnit(unit.id)}
+                  onDuplicate={() => onDuplicateUnit(unit.id)}
+                  onDelete={() => onDeleteUnit(unit.id)}
+                  onUpdate={(updated) => onUpdateProject(p => ({
+                    ...p, units: p.units.map(u => u.id === unit.id ? { ...u, ...updated } : u)
+                  }))}
+                  canDelete={project.units.length > 1}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// UNIT CARD
+// ─────────────────────────────────────────────
+function UnitCard({ unit, index, onOpen, onDuplicate, onDelete, onUpdate, canDelete }: {
+  unit: Unit; index: number;
+  onOpen: () => void; onDuplicate: () => void; onDelete: () => void;
+  onUpdate: (u: Partial<Unit>) => void; canDelete: boolean;
+}) {
+  const [editingName, setEditingName] = useState(false);
+  const [nameVal, setNameVal] = useState(unit.name);
+  const typeLabel = unit.projectMode === 'glass' ? 'Glass Panel' : 'Window/Door';
+  const area = (unit.overallWidth * unit.overallHeight / 144 * unit.quantity).toFixed(1);
+
+  return (
+    <div className="bg-white border border-neutral-200 rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden group">
+      {/* Preview */}
+      <div className="bg-slate-100 h-36 flex items-center justify-center cursor-pointer relative"
+        onClick={onOpen}>
+        <MiniPreview unit={unit} />
+        <div className="absolute inset-0 bg-blue-600/0 group-hover:bg-blue-600/5 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+          <div className="bg-white rounded-full px-3 py-1 text-xs font-semibold text-blue-600 shadow">Edit</div>
+        </div>
+      </div>
+
+      {/* Info */}
+      <div className="p-3">
+        <div className="flex items-start justify-between mb-2">
+          <div className="flex-1 mr-2">
+            {editingName ? (
+              <input autoFocus value={nameVal}
+                onChange={e => setNameVal(e.target.value)}
+                onBlur={() => { onUpdate({ name: nameVal }); setEditingName(false); }}
+                onKeyDown={e => { if (e.key === 'Enter') { onUpdate({ name: nameVal }); setEditingName(false); } }}
+                className="w-full border-b border-blue-400 outline-none text-sm font-bold" />
+            ) : (
+              <button onClick={() => { setNameVal(unit.name); setEditingName(true); }}
+                className="text-sm font-bold text-neutral-800 hover:text-blue-600 flex items-center gap-1">
+                {unit.name} <Edit2 className="w-3 h-3 text-neutral-400" />
+              </button>
+            )}
+            <p className="text-xs text-neutral-400 mt-0.5">{typeLabel}</p>
+          </div>
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${unit.projectMode === 'glass' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+            {unit.projectMode === 'glass' ? 'GLASS' : 'WINDOW'}
+          </span>
+        </div>
+
+        <div className="text-sm font-semibold text-neutral-800 mb-2">
+          {toFraction(unit.overallWidth)} × {toFraction(unit.overallHeight)}
+        </div>
+
+        <div className="flex gap-2 mb-3">
+          <div className="flex-1">
+            <label className="block text-[10px] text-neutral-400 mb-0.5">Location</label>
+            <input value={unit.location} onChange={e => onUpdate({ location: e.target.value })}
+              placeholder="e.g. Master Bath"
+              className="w-full border-b border-neutral-200 focus:border-blue-400 outline-none text-xs py-0.5" />
+          </div>
+          <div className="w-14">
+            <label className="block text-[10px] text-neutral-400 mb-0.5">Qty</label>
+            <input type="number" min={1} value={unit.quantity} onChange={e => onUpdate({ quantity: Number(e.target.value) })}
+              className="w-full border-b border-neutral-200 focus:border-blue-400 outline-none text-xs py-0.5 text-center" />
+          </div>
+        </div>
+
+        <div className="text-[11px] text-neutral-400 mb-3">{area} ft² total</div>
+
+        <div className="flex gap-1 pt-2 border-t border-neutral-100">
+          <button onClick={onOpen}
+            className="flex-1 py-1.5 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700 transition-colors">
+            Edit
+          </button>
+          <button onClick={onDuplicate} title="Duplicate"
+            className="px-2 py-1.5 bg-neutral-100 text-neutral-600 rounded text-xs hover:bg-neutral-200 transition-colors">
+            <Copy className="w-3.5 h-3.5" />
+          </button>
+          {canDelete && (
+            <button onClick={onDelete} title="Delete"
+              className="px-2 py-1.5 bg-red-50 text-red-500 rounded text-xs hover:bg-red-100 transition-colors">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// MINI PREVIEW SVG
+// ─────────────────────────────────────────────
+function MiniPreview({ unit }: { unit: Unit }) {
+  const maxW = 180, maxH = 120;
+  const ratio = Math.min(maxW / unit.overallWidth, maxH / unit.overallHeight);
+  const scale = ratio * 0.8;
+  const svgW = unit.overallWidth * scale + 20;
+  const svgH = unit.overallHeight * scale + 20;
+
+  const renderMini = (node: TreeNode, x: number, y: number, w: number, h: number): React.ReactNode => {
+    if (node.type === 'pane') {
+      return (
+        <g key={node.id} transform={`translate(${x},${y})`}>
+          <rect x={0} y={0} width={w} height={h} fill="#f0f9ff" stroke="#94a3b8" strokeWidth={1} />
+          <rect x={2} y={2} width={Math.max(0, w - 4)} height={Math.max(0, h - 4)} fill="#e0f2fe" stroke="#cbd5e1" strokeWidth={0.5} />
+        </g>
+      );
+    }
+    if (node.type === 'split') {
+      const isV = node.direction === 'V';
+      const mull = 1.5;
+      let w1: number, h1: number, w2: number, h2: number, x2: number, y2: number;
+      if (isV) { const avW = w - mull; w1 = avW * node.ratio; h1 = h; w2 = avW * (1 - node.ratio); h2 = h; x2 = x + w1 + mull; y2 = y; }
+      else { const avH = h - mull; w1 = w; h1 = avH * node.ratio; w2 = w; h2 = avH * (1 - node.ratio); x2 = x; y2 = y + h1 + mull; }
+      return (
+        <g key={node.id}>
+          {renderMini(node.children[0], x, y, w1, h1)}
+          {renderMini(node.children[1], x2, y2, w2, h2)}
+          <rect x={isV ? x + w1 : x} y={isV ? y : y + h1} width={isV ? mull : w} height={isV ? h : mull} fill="#94a3b8" />
+        </g>
+      );
+    }
+  };
+
+  return (
+    <svg width={svgW} height={svgH}>
+      <g transform="translate(10,10)">
+        <rect x={0} y={0} width={unit.overallWidth * scale} height={unit.overallHeight * scale} fill="#f8fafc" stroke="#334155" strokeWidth={2} />
+        {renderMini(unit.tree, 2, 2, unit.overallWidth * scale - 4, unit.overallHeight * scale - 4)}
+      </g>
+    </svg>
+  );
+}
+
+// ─────────────────────────────────────────────
+// UNIT EDITOR VIEW
+// ─────────────────────────────────────────────
+function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty }: {
+  unit: Unit; projectName: string;
+  onBack: () => void; onSave: (updated: Partial<Unit>) => void;
+  onSaveProject: () => void; isDirty: boolean;
+}) {
+  const [editorState, setEditorState] = useState<EditorState>({
+    tree: unit.tree,
+    overallWidth: unit.overallWidth,
+    overallHeight: unit.overallHeight,
+    projectMode: unit.projectMode,
+  });
+  const [history, setHistory] = useState<EditorState[]>([editorState]);
+  const [historyIdx, setHistoryIdx] = useState(0);
+  const [selectedId, setSelectedId] = useState<string>('root');
+  const [dragState, setDragState] = useState<any>(null);
+  const [snapIndicator, setSnapIndicator] = useState<number | null>(null);
+  const [scale, setScale] = useState(10);
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  const { tree, overallWidth, overallHeight, projectMode } = editorState;
+
+  // Sync back to project whenever editor state changes
+  useEffect(() => {
+    onSave({ tree, overallWidth, overallHeight, projectMode });
+  }, [editorState]);
+
+  const pushState = useCallback((next: EditorState) => {
+    setHistory(h => [...h.slice(0, historyIdx + 1), next]);
+    setHistoryIdx(i => i + 1);
+    setEditorState(next);
+  }, [historyIdx]);
+
+  const undo = useCallback(() => {
+    if (historyIdx > 0) { setEditorState(history[historyIdx - 1]); setHistoryIdx(i => i - 1); }
+  }, [history, historyIdx]);
+  const redo = useCallback(() => {
+    if (historyIdx < history.length - 1) { setEditorState(history[historyIdx + 1]); setHistoryIdx(i => i + 1); }
+  }, [history, historyIdx]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); return; }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); return; }
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); onSaveProject(); return; }
+      if (e.key === 'v') handleSplit('V');
+      if (e.key === 'h') handleSplit('H');
+      if (e.key === 'Delete' || e.key === 'Backspace') handleDelete();
+      if (e.key === 'Escape') setSelectedId('root');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo, selectedId, editorState]);
+
+  const handleSplit = (dir: 'V' | 'H') => {
+    if (!selectedId) return;
+    const newTree = updateNode(tree, selectedId, n => {
+      if (n.type !== 'pane') return n;
+      return {
+        id: n.id, type: 'split', direction: dir, ratio: 0.5,
+        children: [
+          { ...n, id: uuid() } as PaneNode,
+          { id: uuid(), type: 'pane', paneType: 'fixed', glassType: (n as PaneNode).glassType, glassThickness: (n as PaneNode).glassThickness, edgeFinish: (n as PaneNode).edgeFinish, cutouts: 0 } as PaneNode,
+        ],
+      } as SplitNode;
+    });
+    pushState({ ...editorState, tree: newTree });
+  };
+
+  const handleDelete = () => {
+    if (selectedId === 'root') { pushState({ ...editorState, tree: makeInitialPane() }); return; }
+    const newTree = deleteNode(tree, selectedId) || makeInitialPane();
+    pushState({ ...editorState, tree: newTree });
+    setSelectedId('root');
+  };
+
+  const updateProp = (prop: string, val: any) => {
+    pushState({ ...editorState, tree: updateNode(tree, selectedId, n => ({ ...n, [prop]: val })) });
+  };
+
+  const handleExportSVG = async () => {
+    if (!svgRef.current) return;
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(svgRef.current)}`;
+    if (window.electronAPI) await window.electronAPI.exportSVG(svg);
+    else { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' })); a.download = `${unit.name}.svg`; a.click(); }
+  };
+
+  const handlePrint = () => window.electronAPI ? window.electronAPI.print() : window.print();
+
+  // Mullion drag
+  const onDragStart = (e: React.MouseEvent, splitId: string, startRatio: number, boundsW: number, boundsH: number, dir: 'V' | 'H') => {
+    e.stopPropagation(); e.preventDefault();
+    setDragState({ splitId, startX: e.clientX, startY: e.clientY, startRatio, boundsW, boundsH, dir });
+  };
+
+  useEffect(() => {
+    if (!dragState) return;
+    const onMove = (e: MouseEvent) => {
+      const dx = e.clientX - dragState.startX, dy = e.clientY - dragState.startY;
+      const newTree = updateNode(tree, dragState.splitId, n => {
+        const delta = dragState.dir === 'V'
+          ? (dx / scale) / (dragState.boundsW - MULLION_THICKNESS)
+          : (dy / scale) / (dragState.boundsH - MULLION_THICKNESS);
+        let raw = Math.max(0.1, Math.min(0.9, dragState.startRatio + delta));
+        const snap = SNAP_POINTS.find(p => Math.abs(raw - p) < SNAP_ZONE);
+        if (snap !== undefined) { raw = snap; setSnapIndicator(snap); } else setSnapIndicator(null);
+        return { ...n, ratio: raw };
+      });
+      setEditorState(prev => ({ ...prev, tree: newTree }));
+    };
+    const onUp = () => {
+      setHistory(h => [...h.slice(0, historyIdx + 1), editorState]);
+      setHistoryIdx(i => i + 1);
+      setDragState(null); setSnapIndicator(null);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [dragState, scale, tree, historyIdx, editorState]);
+
+  // SVG Renderer
+  const panesList: (PaneNode & { x: number; y: number; w: number; h: number })[] = [];
+
+  const renderNode = (node: TreeNode, x: number, y: number, w: number, h: number): React.ReactNode => {
+    const sel = selectedId === node.id;
+    const isGlass = projectMode === 'glass';
+
+    if (node.type === 'pane') {
+      panesList.push({ ...node, x, y, w, h });
+      const wIn = w / scale, hIn = h / scale;
+      const fontSize = Math.max(9, Math.min(13, w / 8));
+      const glassColor = isGlass ? (GLASS_FILL[node.glassType || 'tempered']) : '#f0f9ff';
+
+      return (
+        <g key={node.id} transform={`translate(${x},${y})`}
+          onClick={e => { e.stopPropagation(); setSelectedId(node.id); }}
+          style={{ cursor: 'pointer' }}>
+          <rect x={0} y={0} width={w} height={h}
+            fill={sel ? '#dbeafe' : '#f8fafc'}
+            stroke={sel ? '#3b82f6' : '#1e293b'} strokeWidth={sel ? 3 : 1.5} />
+          {!isGlass && (
+            <rect x={SASH_PROFILE} y={SASH_PROFILE}
+              width={Math.max(0, w - SASH_PROFILE * 2)} height={Math.max(0, h - SASH_PROFILE * 2)}
+              fill={glassColor} stroke="#9ca3af" strokeWidth={1} />
+          )}
+          {isGlass && (
+            <rect x={4} y={4} width={Math.max(0, w - 8)} height={Math.max(0, h - 8)}
+              fill={glassColor} stroke="#6ee7b7" strokeWidth={1.5} strokeDasharray="6 3" />
+          )}
+          {!isGlass && <PaneIndicators type={node.paneType} w={w} h={h} />}
+
+          {/* Dimension label — top quarter, not overlapping arrows */}
+          {w > 50 && h > 35 && (
+            <>
+              <rect x={w / 2 - fontSize * 2.5} y={h * 0.15 - fontSize * 0.7} width={fontSize * 5} height={fontSize * 1.4} fill="white" opacity={0.8} rx={2} />
+              <text x={w / 2} y={h * 0.15 + fontSize * 0.4} textAnchor="middle"
+                fontSize={fontSize} fontWeight="600"
+                fill={sel ? '#1d4ed8' : '#334155'}
+                style={{ pointerEvents: 'none', userSelect: 'none' }}>
+                {toFraction(wIn)} × {toFraction(hIn)}
+              </text>
+            </>
+          )}
+
+          {/* Glass spec label — bottom quarter */}
+          {isGlass && node.glassType && w > 80 && h > 55 && (
+            <text x={w / 2} y={h * 0.85} textAnchor="middle"
+              fontSize={Math.max(7, fontSize * 0.75)} fill="#059669"
+              style={{ pointerEvents: 'none', userSelect: 'none' }}>
+              {node.glassThickness}" · {GLASS_TYPES.find(g => g.value === node.glassType)?.label}
+            </text>
+          )}
+          <rect x={0} y={0} width={w} height={h} fill="transparent" />
+        </g>
+      );
+    }
+
+    if (node.type === 'split') {
+      const isV = node.direction === 'V';
+      const mullPx = MULLION_THICKNESS;
+      let w1: number, h1: number, w2: number, h2: number, x2: number, y2: number;
+      if (isV) { const avW = w - mullPx; w1 = avW * node.ratio; h1 = h; w2 = avW * (1 - node.ratio); h2 = h; x2 = x + w1 + mullPx; y2 = y; }
+      else { const avH = h - mullPx; w1 = w; h1 = avH * node.ratio; w2 = w; h2 = avH * (1 - node.ratio); x2 = x; y2 = y + h1 + mullPx; }
+      const mX = isV ? x + w1 : x, mY = isV ? y : y + h1;
+      const mW = isV ? mullPx : w, mH = isV ? h : mullPx;
+      const isSnapped = snapIndicator !== null && Math.abs((isV ? w1 / w : h1 / h) - snapIndicator) < 0.01;
+
+      return (
+        <g key={node.id} onClick={e => { e.stopPropagation(); setSelectedId(node.id); }}>
+          {sel && <rect x={x} y={y} width={w} height={h} fill="#bfdbfe" opacity={0.3} />}
+          {renderNode(node.children[0], x, y, w1, h1)}
+          {renderNode(node.children[1], x2, y2, w2, h2)}
+          <rect x={mX} y={mY} width={mW} height={mH}
+            fill={isSnapped ? '#3b82f6' : '#d1d5db'}
+            stroke={isSnapped ? '#1d4ed8' : '#374151'} strokeWidth={1} />
+          <rect
+            x={isV ? mX - 5 : mX} y={isV ? mY : mY - 5}
+            width={isV ? mW + 10 : mW} height={isV ? mH : mH + 10}
+            fill="transparent" style={{ cursor: isV ? 'col-resize' : 'row-resize' }}
+            onMouseDown={e => onDragStart(e, node.id, node.ratio, w / scale, h / scale, node.direction)}
+          />
+          {isSnapped && (
+            <text x={isV ? mX + mullPx / 2 : x + w / 2} y={isV ? y + h / 2 : mY + mullPx / 2}
+              textAnchor="middle" dominantBaseline="middle" fontSize={9} fill="white" fontWeight="bold"
+              style={{ pointerEvents: 'none' }}>⊙</text>
+          )}
+        </g>
+      );
+    }
+  };
+
+  const selectedNode = useMemo(() => findNode(tree, selectedId), [tree, selectedId]);
+  const px = 80, py = 80;
+  const svgW = overallWidth * scale + px * 2;
+  const svgH = overallHeight * scale + py * 2;
+  const innerW = projectMode === 'glass' ? overallWidth * scale : (overallWidth - FRAME_THICKNESS * 2) * scale;
+  const innerH = projectMode === 'glass' ? overallHeight * scale : (overallHeight - FRAME_THICKNESS * 2) * scale;
+  const innerOX = projectMode === 'glass' ? 0 : FRAME_THICKNESS * scale;
+  const innerOY = projectMode === 'glass' ? 0 : FRAME_THICKNESS * scale;
+
+  return (
+    <div className="flex flex-col h-screen" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+      {/* Breadcrumb bar */}
+      <div className="bg-neutral-900 text-white px-4 py-2 flex items-center gap-3 text-sm border-b border-neutral-800">
+        <button onClick={onBack}
+          className="flex items-center gap-1.5 text-neutral-400 hover:text-white transition-colors">
+          <ArrowLeft className="w-4 h-4" /> {projectName}
+        </button>
+        <span className="text-neutral-600">/</span>
+        <span className="text-white font-semibold">{unit.name}</span>
+        {isDirty && <span className="text-amber-400 text-xs ml-1">● unsaved</span>}
+        <div className="flex-1" />
+        <div className="flex gap-1">
+          {[
+            { icon: <Save className="w-3.5 h-3.5" />, label: 'Save Project', fn: onSaveProject, hot: 'Ctrl+S' },
+            { icon: <Download className="w-3.5 h-3.5" />, label: 'SVG', fn: handleExportSVG, hot: '' },
+            { icon: <Printer className="w-3.5 h-3.5" />, label: 'Print', fn: handlePrint, hot: '' },
+          ].map(({ icon, label, fn }) => (
+            <button key={label} onClick={fn}
+              className="flex items-center gap-1 px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors text-xs">
+              {icon} {label}
+            </button>
+          ))}
+          <div className="w-px bg-neutral-700 mx-1" />
+          <button onClick={undo} disabled={historyIdx === 0} title="Ctrl+Z"
+            className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors disabled:opacity-30">
+            <Undo2 className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={redo} disabled={historyIdx >= history.length - 1} title="Ctrl+Y"
+            className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors disabled:opacity-30">
+            <Redo2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* LEFT SIDEBAR */}
+        <div className="w-72 bg-white border-r border-neutral-200 flex flex-col z-10 overflow-y-auto">
+          <div className="p-4 space-y-4">
+
+            {/* Mode */}
+            <div>
+              <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Mode</label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(['window', 'glass'] as ProjectMode[]).map(m => (
+                  <button key={m} onClick={() => pushState({ ...editorState, projectMode: m })}
+                    className={`py-1.5 rounded text-xs font-semibold border transition-colors flex items-center justify-center gap-1
+                      ${editorState.projectMode === m
+                        ? m === 'window' ? 'bg-blue-600 text-white border-blue-600' : 'bg-emerald-600 text-white border-emerald-600'
+                        : 'bg-white text-neutral-600 border-neutral-300 hover:bg-neutral-50'}`}>
+                    {m === 'window' ? <Maximize2 className="w-3 h-3" /> : <Square className="w-3 h-3" />}
+                    {m === 'window' ? 'Window' : 'Glass Panel'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <hr className="border-neutral-100" />
+
+            {/* Dimensions */}
+            <div>
+              <h2 className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Settings className="w-3.5 h-3.5" /> Size
+              </h2>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-neutral-600">Width (in)</label>
+                  <input type="number" value={overallWidth}
+                    onChange={e => pushState({ ...editorState, overallWidth: Number(e.target.value) })}
+                    className="w-full p-2 border border-neutral-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-neutral-600">Height (in)</label>
+                  <input type="number" value={overallHeight}
+                    onChange={e => pushState({ ...editorState, overallHeight: Number(e.target.value) })}
+                    className="w-full p-2 border border-neutral-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                </div>
+              </div>
+              {projectMode === 'window' && (
+                <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700 flex justify-between">
+                  <span className="font-semibold">R.O.</span>
+                  <span>{toFraction(overallWidth + 2)} × {toFraction(overallHeight + 2)}</span>
+                </div>
+              )}
+            </div>
+
+            <hr className="border-neutral-100" />
+
+            {/* Selected pane controls */}
+            <div>
+              <h2 className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <MousePointer2 className="w-3.5 h-3.5" /> Selected
+              </h2>
+
+              {selectedNode?.type === 'pane' && (
+                <div className="space-y-3">
+                  <div className="p-2.5 bg-neutral-50 rounded-lg border border-neutral-200">
+                    <label className="block text-xs font-semibold mb-2 text-neutral-600">Split Pane</label>
+                    <div className="flex gap-1.5">
+                      <button onClick={() => handleSplit('V')}
+                        className="flex-1 flex items-center justify-center gap-1 bg-white border border-neutral-300 py-1.5 rounded hover:bg-blue-50 hover:border-blue-300 text-xs font-medium transition-colors">
+                        <GripVertical className="w-3.5 h-3.5" /> Vertical <kbd className="ml-1 text-neutral-400 text-[9px] bg-neutral-100 px-1 rounded">V</kbd>
+                      </button>
+                      <button onClick={() => handleSplit('H')}
+                        className="flex-1 flex items-center justify-center gap-1 bg-white border border-neutral-300 py-1.5 rounded hover:bg-blue-50 hover:border-blue-300 text-xs font-medium transition-colors">
+                        <GripHorizontal className="w-3.5 h-3.5" /> Horiz <kbd className="ml-1 text-neutral-400 text-[9px] bg-neutral-100 px-1 rounded">H</kbd>
+                      </button>
+                    </div>
+                  </div>
+
+                  {projectMode === 'window' && (
+                    <div>
+                      <label className="block text-xs font-semibold mb-1 text-neutral-600">Operation</label>
+                      <select value={(selectedNode as PaneNode).paneType}
+                        onChange={e => updateProp('paneType', e.target.value)}
+                        className="w-full p-2 border border-neutral-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white text-xs">
+                        {['Fixed', 'Sliding', 'Hung', 'Casement', 'Specialty'].map(group => (
+                          <optgroup key={group} label={`── ${group} ──`}>
+                            {WINDOW_PANE_TYPES.filter(t => t.group === group).map(t => (
+                              <option key={t.value} value={t.value}>{t.label}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {projectMode === 'glass' && (
+                    <div className="space-y-2">
+                      <div>
+                        <label className="block text-xs font-semibold mb-1 text-neutral-600">Glass Type</label>
+                        <select value={(selectedNode as PaneNode).glassType || 'tempered'}
+                          onChange={e => updateProp('glassType', e.target.value)}
+                          className="w-full p-2 border border-neutral-300 rounded focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-xs">
+                          {GLASS_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold mb-1.5 text-neutral-600">Thickness</label>
+                        <div className="flex gap-1 flex-wrap">
+                          {(['1/4', '3/8', '1/2', '5/8', '3/4'] as GlassThickness[]).map(t => (
+                            <button key={t} onClick={() => updateProp('glassThickness', t)}
+                              className={`px-2 py-0.5 rounded border text-xs font-mono transition-colors
+                                ${(selectedNode as PaneNode).glassThickness === t ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-neutral-300 hover:bg-neutral-50'}`}>
+                              {t}"
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold mb-1 text-neutral-600">Edge Finish</label>
+                        <select value={(selectedNode as PaneNode).edgeFinish || 'polished'}
+                          onChange={e => updateProp('edgeFinish', e.target.value)}
+                          className="w-full p-2 border border-neutral-300 rounded focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-xs">
+                          {EDGE_FINISHES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold mb-1 text-neutral-600">Cutouts</label>
+                        <input type="number" min={0} max={20}
+                          value={(selectedNode as PaneNode).cutouts || 0}
+                          onChange={e => updateProp('cutouts', Number(e.target.value))}
+                          className="w-full p-2 border border-neutral-300 rounded focus:ring-2 focus:ring-emerald-500 outline-none text-xs" />
+                        {(selectedNode as PaneNode).glassType === 'tempered' && ((selectedNode as PaneNode).cutouts || 0) > 0 && (() => {
+                          const thkMap: Record<string, number> = { '1/4': 0.25, '3/8': 0.375, '1/2': 0.5, '5/8': 0.625, '3/4': 0.75 };
+                          const thk = thkMap[(selectedNode as PaneNode).glassThickness || '1/2'] || 0.5;
+                          return <p className="text-[10px] text-amber-600 mt-1">⚠ Min {(thk * 5).toFixed(2)}" from edges (5× thickness)</p>;
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  <button onClick={handleDelete}
+                    className="w-full flex items-center justify-center gap-1.5 text-red-600 border border-red-200 bg-red-50 py-1.5 rounded hover:bg-red-100 transition-colors text-xs font-semibold">
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {selectedId === 'root' ? 'Reset Layout' : 'Delete'} <kbd className="text-red-300 text-[9px] bg-red-100 px-1 rounded">Del</kbd>
+                  </button>
+                </div>
+              )}
+
+              {selectedNode?.type === 'split' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold mb-1 text-neutral-600">Mullion Position</label>
+                    <div className="flex items-center gap-2">
+                      <input type="range" min="0.1" max="0.9" step="0.01"
+                        value={(selectedNode as SplitNode).ratio}
+                        onChange={e => {
+                          const newTree = updateNode(tree, selectedId, n => ({ ...n, ratio: Number(e.target.value) }));
+                          setEditorState(prev => ({ ...prev, tree: newTree }));
+                        }}
+                        className="flex-1" />
+                      <span className="text-xs font-mono bg-neutral-100 px-2 py-0.5 rounded w-10 text-center">
+                        {Math.round((selectedNode as SplitNode).ratio * 100)}%
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-neutral-400 mt-1">Snaps at ⅓, ½, ⅔</p>
+                  </div>
+                  <button onClick={handleDelete}
+                    className="w-full flex items-center justify-center gap-1.5 text-red-600 border border-red-200 bg-red-50 py-1.5 rounded hover:bg-red-100 transition-colors text-xs font-semibold">
+                    <Trash2 className="w-3.5 h-3.5" /> Remove Mullion
+                  </button>
+                </div>
+              )}
+
+              {!selectedNode && (
+                <p className="text-xs text-neutral-400 italic">Click a pane or mullion to edit</p>
+              )}
+            </div>
+
+            {/* Shortcuts */}
+            <div className="p-2.5 bg-neutral-50 rounded-lg border border-neutral-100">
+              <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5">Shortcuts</p>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+                {[['V', 'Split vert.'], ['H', 'Split horiz.'], ['Del', 'Delete'], ['Esc', 'Deselect'], ['Ctrl+Z', 'Undo'], ['Ctrl+Y', 'Redo']].map(([k, v]) => (
+                  <div key={k} className="flex items-center gap-1 text-[10px] text-neutral-500">
+                    <kbd className="bg-white border border-neutral-200 px-1 rounded text-[9px] font-mono">{k}</kbd>
+                    <span>{v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* CENTER CANVAS */}
+        <div className="flex-1 relative flex flex-col bg-slate-100 overflow-hidden"
+          onClick={() => setSelectedId('root')}>
+          <div className="absolute top-3 right-3 z-10">
+            <div className={`px-3 py-1.5 rounded-full shadow border text-xs font-semibold flex items-center gap-2
+              ${projectMode === 'glass' ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-white text-neutral-600 border-neutral-200'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${projectMode === 'glass' ? 'bg-white' : 'bg-blue-500'}`} />
+              {projectMode === 'glass' ? 'Glass Panel — frameless' : 'Drag mullions to resize'}
+            </div>
+          </div>
+          <div className="absolute bottom-3 right-3 z-10 flex items-center gap-1 bg-white p-1 rounded-lg shadow border border-neutral-200">
+            <button onClick={() => setScale(s => Math.min(s + 2, 32))} className="w-8 h-8 flex items-center justify-center hover:bg-neutral-100 rounded font-bold text-neutral-600">+</button>
+            <span className="px-2 text-xs text-neutral-400 font-mono">{scale}px/in</span>
+            <button onClick={() => setScale(s => Math.max(s - 2, 4))} className="w-8 h-8 flex items-center justify-center hover:bg-neutral-100 rounded font-bold text-neutral-600">−</button>
+          </div>
+          <div className="flex-1 w-full h-full overflow-auto flex items-center justify-center"
+            style={{ cursor: dragState ? (dragState.dir === 'V' ? 'col-resize' : 'row-resize') : 'default' }}>
+            <svg ref={svgRef} width={svgW} height={svgH}
+              style={{ backgroundColor: 'white', backgroundImage: 'radial-gradient(#e2e8f0 1px, transparent 1px)', backgroundSize: '20px 20px' }}
+              className="drop-shadow-2xl">
+              <defs>
+                <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                  <path d="M1,1 L5,3 L1,5" fill="none" stroke="#64748b" strokeWidth="1.5" />
+                </marker>
+                <marker id="arrow-s" markerWidth="6" markerHeight="6" refX="1" refY="3" orient="auto">
+                  <path d="M5,1 L1,3 L5,5" fill="none" stroke="#64748b" strokeWidth="1.5" />
+                </marker>
+              </defs>
+              <g transform={`translate(${px},${py})`}>
+                <rect x={0} y={0} width={overallWidth * scale} height={overallHeight * scale}
+                  fill="#f8fafc"
+                  stroke={projectMode === 'glass' ? '#10b981' : '#0f172a'}
+                  strokeWidth={projectMode === 'glass' ? 2 : 5}
+                  strokeDasharray={projectMode === 'glass' ? '10 4' : undefined} />
+                <g transform={`translate(${innerOX},${innerOY})`}>
+                  {renderNode(tree, 0, 0, innerW, innerH)}
+                </g>
+                {/* Width dim */}
+                <g transform="translate(0,-34)">
+                  <line x1={0} y1={0} x2={overallWidth * scale} y2={0} stroke="#94a3b8" strokeWidth={1} markerStart="url(#arrow-s)" markerEnd="url(#arrow)" />
+                  <rect x={(overallWidth * scale) / 2 - 38} y={-11} width={76} height={22} fill="white" rx={4} />
+                  <text x={(overallWidth * scale) / 2} y={6} textAnchor="middle" fontSize={13} fontWeight={700} fill="#1e293b">{toFraction(overallWidth)}</text>
+                </g>
+                {/* Height dim */}
+                <g transform="translate(-34,0)">
+                  <line x1={0} y1={0} x2={0} y2={overallHeight * scale} stroke="#94a3b8" strokeWidth={1} markerStart="url(#arrow-s)" markerEnd="url(#arrow)" />
+                  <rect x={-11} y={(overallHeight * scale) / 2 - 38} width={22} height={76} fill="white" rx={4} />
+                  <text x={0} y={(overallHeight * scale) / 2} textAnchor="middle" dominantBaseline="middle" fontSize={13} fontWeight={700} fill="#1e293b"
+                    transform={`rotate(-90 0,${(overallHeight * scale) / 2})`}>{toFraction(overallHeight)}</text>
+                </g>
+              </g>
+            </svg>
+          </div>
+        </div>
+
+        {/* RIGHT SIDEBAR — BOM */}
+        <div className="w-64 bg-white border-l border-neutral-200 flex flex-col z-10">
+          <div className="p-3 border-b border-neutral-200 bg-neutral-50">
+            <h2 className="text-xs font-bold text-neutral-800 uppercase tracking-wider flex items-center gap-1.5">
+              <XSquare className="w-3.5 h-3.5" /> Bill of Materials
+            </h2>
+            <p className="text-[11px] text-neutral-400 mt-0.5">{panesList.length} pane{panesList.length !== 1 ? 's' : ''}</p>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5">
+            {panesList.map((pane, idx) => {
+              const wIn = pane.w / scale, hIn = pane.h / scale;
+              const area = (wIn * hIn / 144).toFixed(2);
+              const isSel = selectedId === pane.id;
+              const typeLabel = projectMode === 'glass'
+                ? `${pane.glassThickness || '1/2'}" ${GLASS_TYPES.find(g => g.value === pane.glassType)?.label || 'Glass'}`
+                : (WINDOW_PANE_TYPES.find(t => t.value === pane.paneType)?.label || pane.paneType);
+              return (
+                <div key={pane.id} onClick={() => setSelectedId(pane.id)}
+                  className={`p-2 rounded-lg border cursor-pointer transition-all text-xs
+                    ${isSel ? 'bg-blue-50 border-blue-300 shadow-sm' : 'bg-neutral-50 border-neutral-200 hover:border-blue-200'}`}>
+                  <div className="flex justify-between items-center mb-0.5">
+                    <span className="font-bold text-neutral-700">#{idx + 1}</span>
+                    <span className="text-[9px] font-mono bg-white px-1 py-0.5 rounded text-neutral-500 border border-neutral-200 truncate max-w-[100px]">{typeLabel}</span>
+                  </div>
+                  <div className="font-semibold text-neutral-900">{toFraction(wIn)} × {toFraction(hIn)}</div>
+                  <div className="text-neutral-400 mt-0.5">{area} ft²
+                    {projectMode === 'glass' && (pane.cutouts || 0) > 0 && <span className="ml-1.5 text-amber-600">⬤ {pane.cutouts}</span>}
+                  </div>
+                </div>
+              );
+            })}
+            {panesList.length > 1 && (
+              <div className="p-2 rounded-lg bg-neutral-100 border border-neutral-200 text-xs mt-1">
+                <span className="font-bold text-neutral-500">TOTAL </span>
+                <span className="font-semibold">{panesList.reduce((s, p) => s + (p.w / scale) * (p.h / scale) / 144, 0).toFixed(2)} ft²</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// PANE INDICATORS
+// ─────────────────────────────────────────────
+function PaneIndicators({ type, w, h }: { type: WindowPaneType; w: number; h: number }) {
+  const cx = w / 2, cy = h / 2;
+  const al = Math.min(w, h) * 0.28;
+  const s = "#475569", sw = "2", me = "url(#arrow)";
+  switch (type) {
+    case 'slide-l': return <line x1={cx + al / 2} y1={cy} x2={cx - al / 2} y2={cy} stroke={s} strokeWidth={sw} markerEnd={me} />;
+    case 'slide-r': return <line x1={cx - al / 2} y1={cy} x2={cx + al / 2} y2={cy} stroke={s} strokeWidth={sw} markerEnd={me} />;
+    case 'slide-u': return <line x1={cx} y1={cy + al / 2} x2={cx} y2={cy - al / 2} stroke={s} strokeWidth={sw} markerEnd={me} />;
+    case 'slide-d': return <line x1={cx} y1={cy - al / 2} x2={cx} y2={cy + al / 2} stroke={s} strokeWidth={sw} markerEnd={me} />;
+    case 'double-hung': return <><line x1={cx} y1={cy - al * 0.1} x2={cx} y2={cy - al * 0.6} stroke={s} strokeWidth={sw} markerEnd={me} /><line x1={cx} y1={cy + al * 0.1} x2={cx} y2={cy + al * 0.6} stroke={s} strokeWidth={sw} markerEnd={me} /></>;
+    case 'casement-l': return <path d={`M${w} 0 L0 ${cy} L${w} ${h}`} fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="4 4" />;
+    case 'casement-r': return <path d={`M0 0 L${w} ${cy} L0 ${h}`} fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="4 4" />;
+    case 'awning': return <path d={`M0 ${h} L${cx} 0 L${w} ${h}`} fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="4 4" />;
+    case 'hopper': return <path d={`M0 0 L${cx} ${h} L${w} 0`} fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="4 4" />;
+    case 'tilt-turn': return <><path d={`M0 0 L${w} ${cy} L0 ${h}`} fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="4 4" /><line x1={cx} y1={cy + al * 0.1} x2={cx} y2={cy + al * 0.6} stroke={s} strokeWidth={sw} markerEnd={me} /></>;
+    case 'patio-xo': return <line x1={cx + al * 0.3} y1={cy} x2={cx - al * 0.3} y2={cy} stroke={s} strokeWidth={sw} markerEnd={me} />;
+    case 'patio-ox': return <line x1={cx - al * 0.3} y1={cy} x2={cx + al * 0.3} y2={cy} stroke={s} strokeWidth={sw} markerEnd={me} />;
+    case 'patio-xox': return <><line x1={w * 0.33} y1={cy} x2={w * 0.14} y2={cy} stroke={s} strokeWidth={sw} markerEnd={me} /><line x1={w * 0.66} y1={cy} x2={w * 0.85} y2={cy} stroke={s} strokeWidth={sw} markerEnd={me} /></>;
+    case 'patio-oxxxo': return <><line x1={w * 0.28} y1={cy} x2={w * 0.12} y2={cy} stroke={s} strokeWidth={sw} markerEnd={me} /><line x1={w * 0.5} y1={cy - al * 0.15} x2={w * 0.5} y2={cy + al * 0.15} stroke={s} strokeWidth={sw} /><line x1={w * 0.72} y1={cy} x2={w * 0.88} y2={cy} stroke={s} strokeWidth={sw} markerEnd={me} /></>;
+    case 'bifold': return <>{[0.25, 0.5, 0.75].map(fx => <line key={fx} x1={w * fx} y1={4} x2={w * fx} y2={h - 4} stroke="#d1d5db" strokeWidth="1" strokeDasharray="3 3" />)}<line x1={cx - al / 2} y1={cy} x2={cx + al / 2} y2={cy} stroke={s} strokeWidth={sw} markerEnd={me} /></>;
+    default: return null;
+  }
+}
