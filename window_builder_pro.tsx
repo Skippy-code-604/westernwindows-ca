@@ -359,6 +359,87 @@ function generateCSV(project: Project): string {
   return [header.map(esc).join(','), ...rows].join('\r\n');
 }
 
+// ─────────────────────────────────────────────
+// UNIT SVG RENDERER (for PDF quote — pure strings, no React)
+// ─────────────────────────────────────────────
+function renderUnitSVGString(unit: Unit): string {
+  const MAX_W = 170, MAX_H = 145;
+  const W = unit.overallWidth, H = unit.overallHeight;
+  const isGlass = unit.type === 'glass-panel';
+  const sc = Math.min(MAX_W / W, MAX_H / H);
+  const svgW = Math.round(W * sc), svgH = Math.round(H * sc);
+  const FR = isGlass ? 0 : Math.max(4, Math.round(FRAME_THICKNESS * sc));
+  const MU = Math.max(2, Math.round(MULLION_THICKNESS * sc));
+  const SA = Math.max(2, Math.round(SASH_PROFILE * sc));
+
+  function opIndicator(type: WindowPaneType, x: number, y: number, w: number, h: number): string {
+    const cx = x + w / 2, cy = y + h / 2;
+    const as = Math.max(8, Math.min(w, h) * 0.28);
+    const col = '#475569';
+    switch (type) {
+      case 'sliding-left': case 'sliding-xl':
+        return `<text x="${cx}" y="${cy+as*0.35}" text-anchor="middle" font-size="${as}" fill="${col}" font-family="Arial">←</text>`;
+      case 'sliding-right': case 'sliding-xr':
+        return `<text x="${cx}" y="${cy+as*0.35}" text-anchor="middle" font-size="${as}" fill="${col}" font-family="Arial">→</text>`;
+      case 'sliding-xox': case 'sliding-xx': case 'sliding-oxo':
+        return `<text x="${cx}" y="${cy+as*0.35}" text-anchor="middle" font-size="${as}" fill="${col}" font-family="Arial">↔</text>`;
+      case 'double-hung': case 'single-hung':
+        return `<text x="${cx}" y="${cy+as*0.35}" text-anchor="middle" font-size="${as}" fill="${col}" font-family="Arial">↕</text>`;
+      case 'casement-left':
+        return `<polyline points="${x+w-SA*1.5},${y+SA*1.5} ${x+SA*1.5},${cy} ${x+w-SA*1.5},${y+h-SA*1.5}" fill="none" stroke="${col}" stroke-width="1.2"/>`;
+      case 'casement-right':
+        return `<polyline points="${x+SA*1.5},${y+SA*1.5} ${x+w-SA*1.5},${cy} ${x+SA*1.5},${y+h-SA*1.5}" fill="none" stroke="${col}" stroke-width="1.2"/>`;
+      case 'awning':
+        return `<polyline points="${x+SA},${y+h*0.6} ${x+w/2},${y+SA*1.5} ${x+w-SA},${y+h*0.6}" fill="none" stroke="${col}" stroke-width="1.2"/>`;
+      case 'hopper':
+        return `<polyline points="${x+SA},${y+h*0.4} ${x+w/2},${y+h-SA*1.5} ${x+w-SA},${y+h*0.4}" fill="none" stroke="${col}" stroke-width="1.2"/>`;
+      default: return '';
+    }
+  }
+
+  function renderNode(node: TreeNode, x: number, y: number, w: number, h: number): string {
+    if (node.type === 'split') {
+      const [c1, c2] = node.children;
+      if (node.direction === 'V') {
+        const split = Math.round((w - MU) * node.ratio);
+        return renderNode(c1, x, y, split, h)
+          + `<rect x="${x+split}" y="${y}" width="${MU}" height="${h}" fill="#475569"/>`
+          + renderNode(c2, x+split+MU, y, w-split-MU, h);
+      } else {
+        const split = Math.round((h - MU) * node.ratio);
+        return renderNode(c1, x, y, w, split)
+          + `<rect x="${x}" y="${y+split}" width="${w}" height="${MU}" fill="#475569"/>`
+          + renderNode(c2, x, y+split+MU, w, h-split-MU);
+      }
+    }
+    // PaneNode
+    const pane = node as PaneNode;
+    const gcol = isGlass ? (GLASS_FILL[pane.glassType || 'tempered'] || '#dbeafe') : '#e0f2fe';
+    let s = `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="white" stroke="#1e293b" stroke-width="1.5"/>`;
+    if (!isGlass) {
+      s += `<rect x="${x+SA}" y="${y+SA}" width="${Math.max(0,w-SA*2)}" height="${Math.max(0,h-SA*2)}" fill="${gcol}" stroke="#94a3b8" stroke-width="0.75"/>`;
+      s += opIndicator(pane.paneType, x, y, w, h);
+    } else {
+      s += `<rect x="${x+2}" y="${y+2}" width="${Math.max(0,w-4)}" height="${Math.max(0,h-4)}" fill="${gcol}" stroke="#34d399" stroke-width="1" stroke-dasharray="3 2"/>`;
+      for (const c of (pane.cutouts || [])) {
+        const ccx = x + c.x * sc, ccy = y + c.y * sc, r = (c.diameter / 2) * sc;
+        s += `<circle cx="${ccx}" cy="${ccy}" r="${Math.max(1.5,r)}" fill="white" stroke="#64748b" stroke-width="1"/>`;
+      }
+    }
+    return s;
+  }
+
+  let inner = '';
+  if (!isGlass) {
+    inner += `<rect x="0" y="0" width="${svgW}" height="${svgH}" fill="#475569" stroke="#1e293b" stroke-width="2"/>`;
+    inner += renderNode(unit.tree, FR, FR, svgW - FR*2, svgH - FR*2);
+  } else {
+    inner += renderNode(unit.tree, 0, 0, svgW, svgH);
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">${inner}</svg>`;
+}
+
 function generateQuoteHTML(project: Project): string {
   const date = new Date(project.date).toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' });
   const totalUnits = project.units.reduce((s, u) => s + u.quantity, 0);
@@ -465,7 +546,61 @@ function generateQuoteHTML(project: Project): string {
     </tfoot>
   </table>
 
-  ${project.notes ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;margin-bottom:20px"><strong style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b">Notes</strong><p style="margin-top:6px;color:#334155">${project.notes}</p></div>` : ''}
+  <!-- Unit Details -->
+  <div style="page-break-before:auto;margin-top:28px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:12px;border-bottom:2px solid #e2e8f0;padding-bottom:6px">Unit Details</div>
+    ${project.units.map((u, i) => {
+      const svgStr = renderUnitSVGString(u);
+      const totalMM = calcIguThicknessMM(u.glazingSpec);
+      const spec = u.glazingSpec;
+      const b = spec.build;
+      const liteRow = (lite: LiteSpec | undefined, label: string) => {
+        if (!lite) return '';
+        const type = LITE_GLASS_TYPES.find(t => t.value === lite.glassType)?.label || lite.glassType;
+        const isLam = lite.glassType === 'laminated' || lite.glassType === 'lam-tempered' || lite.glassType === 'lam-hs';
+        const construction = isLam ? ` &nbsp;<span style="color:#6366f1">[${lamConstruction(lite)}]</span>` : '';
+        const tint = lite.tint !== 'clear' ? ` · ${lite.tint}` : '';
+        const lowe = lite.hasLowE && lite.lowEProduct ? ` <span style="color:#059669">+ ${lite.lowEProduct} @Surf.${lite.lowESurface}</span>` : '';
+        return `<tr><td style="color:#64748b;padding:3px 8px;white-space:nowrap;font-size:10px">${label}</td><td style="padding:3px 8px;font-size:10px">${lite.thicknessMM}mm ${type}${tint}${lowe}${construction}</td></tr>`;
+      };
+      const spacerRow = (spacer: SpacerSpec | undefined, gas: GasFill | undefined, label: string) => {
+        if (!spacer) return '';
+        const stype = SPACER_TYPES.find(s => s.value === spacer.type)?.label || spacer.type;
+        const gasLabel = GAS_FILLS.find(g => g.value === gas)?.label || 'Air';
+        return `<tr><td style="color:#64748b;padding:3px 8px;white-space:nowrap;font-size:10px">${label}</td><td style="padding:3px 8px;font-size:10px">${spacer.widthMM}mm ${stype} · ${gasLabel}</td></tr>`;
+      };
+      return `
+      <div style="page-break-inside:avoid;display:flex;gap:20px;align-items:flex-start;padding:14px 16px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:10px;background:${i%2===0?'#ffffff':'#f8fafc'}">
+        <div style="flex-shrink:0;text-align:center">
+          ${svgStr}
+          <div style="font-size:9px;color:#94a3b8;margin-top:4px;font-family:monospace">${toFraction(u.overallWidth)}" × ${toFraction(u.overallHeight)}"</div>
+        </div>
+        <div style="flex:1">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+            <div>
+              <span style="font-size:13px;font-weight:700;color:#1e293b">#${i+1} &mdash; ${u.name}</span>
+              ${u.location ? `<span style="font-size:11px;color:#64748b;margin-left:8px">${u.location}</span>` : ''}
+            </div>
+            <div style="font-size:10px;color:#64748b">Qty: <strong>${u.quantity}</strong> &nbsp;&nbsp; IGU: <strong>${totalMM.toFixed(2)}mm (${mmToFrac(totalMM)})</strong></div>
+          </div>
+          <table style="border-collapse:collapse;width:100%;border:1px solid #e2e8f0;border-radius:4px;overflow:hidden">
+            <thead><tr style="background:#f1f5f9"><th style="padding:4px 8px;font-size:10px;text-align:left;color:#64748b">Component</th><th style="padding:4px 8px;font-size:10px;text-align:left;color:#64748b">Specification</th></tr></thead>
+            <tbody style="font-family:-apple-system,sans-serif">
+              <tr><td style="color:#64748b;padding:3px 8px;font-size:10px">Build</td><td style="padding:3px 8px;font-size:10px;font-weight:600">${b.toUpperCase()} &mdash; ${b==='single'?'Monolithic':b==='double'?'Insulating (IGU)':'Triple IGU'}</td></tr>
+              ${liteRow(spec.lite1, 'Lite 1 (Ext)')}
+              ${spacerRow(spec.spacer1, spec.gasFill1, 'Spacer 1')}
+              ${liteRow(spec.lite2, b==='triple'?'Lite 2 (Mid)':'Lite 2 (Int)')}
+              ${b==='triple' ? spacerRow(spec.spacer2, spec.gasFill2, 'Spacer 2') : ''}
+              ${b==='triple' ? liteRow(spec.lite3, 'Lite 3 (Int)') : ''}
+            </tbody>
+          </table>
+          ${u.notes ? `<div style="font-size:10px;color:#64748b;margin-top:6px"><em>Notes: ${u.notes}</em></div>` : ''}
+        </div>
+      </div>`;
+    }).join('')}
+  </div>
+
+  ${project.notes ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;margin-bottom:20px"><strong style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b">Project Notes</strong><p style="margin-top:6px;color:#334155">${project.notes}</p></div>` : ''}
 
   <div class="footer">
     <span>Western Windows Inc. &nbsp;·&nbsp; (604) 904-6580 &nbsp;·&nbsp; info@westernwindows.ca &nbsp;·&nbsp; westernwindows.ca</span>
