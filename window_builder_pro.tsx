@@ -44,14 +44,16 @@ type IguBuild = 'single' | 'double' | 'triple';
 type LamInterlayer = 'pvb-0.38' | 'pvb-0.76' | 'pvb-1.52' | 'sgp' | 'eva' | 'ionoplast';
 
 interface LiteSpec {
-  thicknessMM: LiteThicknessMM;
+  thicknessMM: LiteThicknessMM; // used for monolithic; ignored for lam if ply1MM/ply2MM set
   glassType: LiteGlassType;
   tint: LiteTint;
   hasLowE: boolean;
   lowEManufacturer?: string;
   lowEProduct?: string;
   lowESurface?: number;
-  interlayer?: LamInterlayer; // for laminated / lam-tempered / lam-hs
+  interlayer?: LamInterlayer;  // for laminated / lam-tempered / lam-hs
+  ply1MM?: LiteThicknessMM;   // first ply thickness (lam types)
+  ply2MM?: LiteThicknessMM;   // second ply thickness (lam types)
 }
 interface SpacerSpec {
   type: SpacerType;
@@ -280,12 +282,24 @@ const LOW_E_DATABASE: LowEManufacturer[] = [
   ]},
 ];
 
+function isLamType(g: LiteGlassType) {
+  return g === 'laminated' || g === 'lam-tempered' || g === 'lam-hs';
+}
+
+function liteTotalMM(lite: LiteSpec): number {
+  if (isLamType(lite.glassType) && lite.ply1MM && lite.ply2MM) {
+    const il = INTERLAYERS.find(x => x.value === (lite.interlayer || 'pvb-0.76'));
+    return Number(lite.ply1MM) + (il?.mm || 0.76) + Number(lite.ply2MM);
+  }
+  return Number(lite.thicknessMM);
+}
+
 function calcIguThicknessMM(spec: GlazingSpec): number {
-  const lite = (mm: LiteThicknessMM | undefined) => mm ? Number(mm) : 0;
+  const lmm = (l: LiteSpec | undefined) => l ? liteTotalMM(l) : 0;
   const spacer = (mm: SpacerWidthMM | undefined) => mm ? Number(mm) : 0;
-  if (spec.build === 'single') return lite(spec.lite1.thicknessMM);
-  if (spec.build === 'double') return lite(spec.lite1.thicknessMM) + spacer(spec.spacer1?.widthMM) + lite(spec.lite2?.thicknessMM);
-  return lite(spec.lite1.thicknessMM) + spacer(spec.spacer1?.widthMM) + lite(spec.lite2?.thicknessMM) + spacer(spec.spacer2?.widthMM) + lite(spec.lite3?.thicknessMM);
+  if (spec.build === 'single') return lmm(spec.lite1);
+  if (spec.build === 'double') return lmm(spec.lite1) + spacer(spec.spacer1?.widthMM) + lmm(spec.lite2);
+  return lmm(spec.lite1) + spacer(spec.spacer1?.widthMM) + lmm(spec.lite2) + spacer(spec.spacer2?.widthMM) + lmm(spec.lite3);
 }
 
 function mmToFrac(mm: number): string {
@@ -299,9 +313,12 @@ function mmToFrac(mm: number): string {
 function lamConstruction(lite: LiteSpec): string {
   const il = INTERLAYERS.find(x => x.value === (lite.interlayer || 'pvb-0.76'));
   const ilMM = il?.mm || 0.76;
-  const half = ((Number(lite.thicknessMM) - ilMM) / 2).toFixed(2);
   const plyName = lite.glassType === 'lam-tempered' ? 'Temp' : lite.glassType === 'lam-hs' ? 'HS' : 'Ann';
   const intName = il ? il.label.split(' ')[0] : 'PVB';
+  if (lite.ply1MM && lite.ply2MM) {
+    return `${lite.ply1MM}mm ${plyName} + ${ilMM}mm ${intName} + ${lite.ply2MM}mm ${plyName}`;
+  }
+  const half = ((Number(lite.thicknessMM) - ilMM) / 2).toFixed(2);
   return `${half}mm ${plyName} + ${ilMM}mm ${intName} + ${half}mm ${plyName}`;
 }
 
@@ -1788,20 +1805,49 @@ function LiteSection({ lite, liteNum, onChange }: {
         ● Lite {liteNum}
       </p>
 
-      {/* Thickness */}
-      <div>
-        <label className="block text-[10px] text-neutral-500 mb-1">Thickness</label>
-        <div className="flex flex-wrap gap-1">
-          {LITE_THICKNESS_MM.map(t => (
-            <button key={t.mm} onClick={() => onChange({ ...lite, thicknessMM: t.mm })}
-              title={t.frac}
-              className={`px-1.5 py-0.5 rounded text-[10px] font-mono border transition-colors
-                ${lite.thicknessMM === t.mm ? 'bg-neutral-800 text-white border-neutral-800' : 'bg-white text-neutral-600 border-neutral-300 hover:border-neutral-500'}`}>
-              {t.label}
-            </button>
-          ))}
+      {/* Thickness — per-ply for lam types, single for monolithic */}
+      {isLamType(lite.glassType) ? (
+        <div className="space-y-1.5">
+          {(['Ply 1', 'Ply 2'] as const).map((label, idx) => {
+            const field = idx === 0 ? 'ply1MM' : 'ply2MM';
+            const val = idx === 0 ? lite.ply1MM : lite.ply2MM;
+            return (
+              <div key={label}>
+                <label className="block text-[10px] text-neutral-500 mb-1">{label} Thickness</label>
+                <div className="flex flex-wrap gap-1">
+                  {LITE_THICKNESS_MM.map(t => (
+                    <button key={t.mm} onClick={() => onChange({ ...lite, [field]: t.mm })}
+                      title={t.frac}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-mono border transition-colors
+                        ${val === t.mm ? 'bg-neutral-800 text-white border-neutral-800' : 'bg-white text-neutral-600 border-neutral-300 hover:border-neutral-500'}`}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {lite.ply1MM && lite.ply2MM && (
+            <p className="text-[9px] text-neutral-400 font-mono">
+              Total: {liteTotalMM(lite).toFixed(2)}mm ({mmToFrac(liteTotalMM(lite))})
+            </p>
+          )}
         </div>
-      </div>
+      ) : (
+        <div>
+          <label className="block text-[10px] text-neutral-500 mb-1">Thickness</label>
+          <div className="flex flex-wrap gap-1">
+            {LITE_THICKNESS_MM.map(t => (
+              <button key={t.mm} onClick={() => onChange({ ...lite, thicknessMM: t.mm })}
+                title={t.frac}
+                className={`px-1.5 py-0.5 rounded text-[10px] font-mono border transition-colors
+                  ${lite.thicknessMM === t.mm ? 'bg-neutral-800 text-white border-neutral-800' : 'bg-white text-neutral-600 border-neutral-300 hover:border-neutral-500'}`}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Glass type */}
       <div>
