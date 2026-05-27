@@ -365,7 +365,7 @@ function generateCSV(project: Project): string {
 function renderUnitSVGString(unit: Unit): string {
   const MAX_W = 170, MAX_H = 145;
   const W = unit.overallWidth, H = unit.overallHeight;
-  const isGlass = unit.type === 'glass-panel';
+  const isGlass = unit.projectMode === 'glass';
   const sc = Math.min(MAX_W / W, MAX_H / H);
   const svgW = Math.round(W * sc), svgH = Math.round(H * sc);
   const FR = isGlass ? 0 : Math.max(4, Math.round(FRAME_THICKNESS * sc));
@@ -377,17 +377,23 @@ function renderUnitSVGString(unit: Unit): string {
     const as = Math.max(8, Math.min(w, h) * 0.28);
     const col = '#475569';
     switch (type) {
-      case 'sliding-left': case 'sliding-xl':
+      case 'slide-l':
         return `<text x="${cx}" y="${cy+as*0.35}" text-anchor="middle" font-size="${as}" fill="${col}" font-family="Arial">←</text>`;
-      case 'sliding-right': case 'sliding-xr':
+      case 'slide-r':
         return `<text x="${cx}" y="${cy+as*0.35}" text-anchor="middle" font-size="${as}" fill="${col}" font-family="Arial">→</text>`;
-      case 'sliding-xox': case 'sliding-xx': case 'sliding-oxo':
+      case 'slide-u':
+        return `<text x="${cx}" y="${cy+as*0.35}" text-anchor="middle" font-size="${as}" fill="${col}" font-family="Arial">↑</text>`;
+      case 'slide-d':
+        return `<text x="${cx}" y="${cy+as*0.35}" text-anchor="middle" font-size="${as}" fill="${col}" font-family="Arial">↓</text>`;
+      case 'patio-xo': case 'patio-ox':
         return `<text x="${cx}" y="${cy+as*0.35}" text-anchor="middle" font-size="${as}" fill="${col}" font-family="Arial">↔</text>`;
-      case 'double-hung': case 'single-hung':
+      case 'patio-xox': case 'patio-oxxxo':
+        return `<text x="${cx}" y="${cy+as*0.35}" text-anchor="middle" font-size="${as}" fill="${col}" font-family="Arial">↔</text>`;
+      case 'double-hung':
         return `<text x="${cx}" y="${cy+as*0.35}" text-anchor="middle" font-size="${as}" fill="${col}" font-family="Arial">↕</text>`;
-      case 'casement-left':
+      case 'casement-l':
         return `<polyline points="${x+w-SA*1.5},${y+SA*1.5} ${x+SA*1.5},${cy} ${x+w-SA*1.5},${y+h-SA*1.5}" fill="none" stroke="${col}" stroke-width="1.2"/>`;
-      case 'casement-right':
+      case 'casement-r':
         return `<polyline points="${x+SA*1.5},${y+SA*1.5} ${x+w-SA*1.5},${cy} ${x+SA*1.5},${y+h-SA*1.5}" fill="none" stroke="${col}" stroke-width="1.2"/>`;
       case 'awning':
         return `<polyline points="${x+SA},${y+h*0.6} ${x+w/2},${y+SA*1.5} ${x+w-SA},${y+h*0.6}" fill="none" stroke="${col}" stroke-width="1.2"/>`;
@@ -594,7 +600,7 @@ function generateQuoteHTML(project: Project): string {
               ${b==='triple' ? liteRow(spec.lite3, 'Lite 3 (Int)') : ''}
             </tbody>
           </table>
-          ${u.notes ? `<div style="font-size:10px;color:#64748b;margin-top:6px"><em>Notes: ${u.notes}</em></div>` : ''}
+          ${''/* unit notes not on Unit model */}
         </div>
       </div>`;
     }).join('')}
