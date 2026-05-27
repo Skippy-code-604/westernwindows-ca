@@ -66,10 +66,16 @@ interface GlazingSpec {
   lite3?: LiteSpec;
 }
 
+interface Cutout {
+  id: string;
+  x: number; // inches from left edge of pane
+  y: number; // inches from top edge of pane
+  diameter: number; // inches
+}
 interface PaneNode {
   id: string; type: 'pane'; paneType: WindowPaneType;
   glassType?: GlassType; glassThickness?: GlassThickness;
-  edgeFinish?: EdgeFinish; cutouts?: number;
+  edgeFinish?: EdgeFinish; cutouts?: Cutout[];
 }
 interface SplitNode {
   id: string; type: 'split'; direction: 'V' | 'H';
@@ -434,7 +440,7 @@ function findNode(node: TreeNode, id: string): TreeNode | null {
 
 const makeInitialPane = (id = 'root'): PaneNode => ({
   id, type: 'pane', paneType: 'fixed',
-  glassType: 'tempered', glassThickness: '1/2', edgeFinish: 'polished', cutouts: 0,
+  glassType: 'tempered', glassThickness: '1/2', edgeFinish: 'polished', cutouts: [],
 });
 
 const makeDefaultLite = (): LiteSpec => ({
@@ -1049,6 +1055,8 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
   const [snapIndicator, setSnapIndicator] = useState<number | null>(null);
   const [scale, setScale] = useState(10);
   const [glazingSpec, setGlazingSpec] = useState<GlazingSpec>(unit.glazingSpec || makeDefaultGlazing());
+  const [cutoutMode, setCutoutMode] = useState(false);
+  const [cutoutDiameter, setCutoutDiameter] = useState(1.25); // inches, ~32mm standard fitting hole
   const svgRef = useRef<SVGSVGElement>(null);
 
   const { tree, overallWidth, overallHeight, projectMode } = editorState;
@@ -1081,7 +1089,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
       if (e.key === 'v') handleSplit('V');
       if (e.key === 'h') handleSplit('H');
       if (e.key === 'Delete' || e.key === 'Backspace') handleDelete();
-      if (e.key === 'Escape') setSelectedId('root');
+      if (e.key === 'Escape') { setSelectedId('root'); setCutoutMode(false); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -1095,7 +1103,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
         id: n.id, type: 'split', direction: dir, ratio: 0.5,
         children: [
           { ...n, id: uuid() } as PaneNode,
-          { id: uuid(), type: 'pane', paneType: 'fixed', glassType: (n as PaneNode).glassType, glassThickness: (n as PaneNode).glassThickness, edgeFinish: (n as PaneNode).edgeFinish, cutouts: 0 } as PaneNode,
+          { id: uuid(), type: 'pane', paneType: 'fixed', glassType: (n as PaneNode).glassType, glassThickness: (n as PaneNode).glassThickness, edgeFinish: (n as PaneNode).edgeFinish, cutouts: [] } as PaneNode,
         ],
       } as SplitNode;
     });
@@ -1156,6 +1164,26 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
   // SVG Renderer
   const panesList: (PaneNode & { x: number; y: number; w: number; h: number })[] = [];
 
+  // Tempered glass cutout exclusion zone (5× glass thickness in inches)
+  const glassMM = parseInt(glazingSpec.lite1.thicknessMM || '6');
+  const minEdgeIn = (glassMM * 5) / 25.4;
+
+  const handlePlaceCutout = (e: React.MouseEvent, nodeId: string, nodeX: number, nodeY: number) => {
+    e.stopPropagation();
+    const svg = svgRef.current;
+    if (!svg) return;
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    const svgPt = pt.matrixTransform(svg.getScreenCTM()!.inverse());
+    const cx = (svgPt.x - (px + innerOX + nodeX)) / scale;
+    const cy = (svgPt.y - (py + innerOY + nodeY)) / scale;
+    const newCutout: Cutout = { id: uuid(), x: cx, y: cy, diameter: cutoutDiameter };
+    const newTree = updateNode(tree, nodeId, n => ({
+      ...n, cutouts: [...((n as PaneNode).cutouts || []), newCutout]
+    }));
+    pushState({ ...editorState, tree: newTree });
+  };
+
   const renderNode = (node: TreeNode, x: number, y: number, w: number, h: number): React.ReactNode => {
     const sel = selectedId === node.id;
     const isGlass = projectMode === 'glass';
@@ -1168,8 +1196,12 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
 
       return (
         <g key={node.id} transform={`translate(${x},${y})`}
-          onClick={e => { e.stopPropagation(); setSelectedId(node.id); }}
-          style={{ cursor: 'pointer' }}>
+          onClick={e => {
+            e.stopPropagation();
+            if (cutoutMode && isGlass) { handlePlaceCutout(e, node.id, x, y); return; }
+            setSelectedId(node.id);
+          }}
+          style={{ cursor: cutoutMode && isGlass ? 'crosshair' : 'pointer' }}>
           <rect x={0} y={0} width={w} height={h}
             fill={sel ? '#dbeafe' : '#f8fafc'}
             stroke={sel ? '#3b82f6' : '#1e293b'} strokeWidth={sel ? 3 : 1.5} />
@@ -1182,9 +1214,52 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
             <rect x={4} y={4} width={Math.max(0, w - 8)} height={Math.max(0, h - 8)}
               fill={glassColor} stroke="#6ee7b7" strokeWidth={1.5} strokeDasharray="6 3" />
           )}
+
+          {/* Tempered glass exclusion zone overlay */}
+          {isGlass && (node.glassType === 'tempered' || glazingSpec.lite1.glassType === 'tempered') && (() => {
+            const margin = minEdgeIn * scale;
+            return (
+              <>
+                {/* Shaded exclusion zone — 4 edges */}
+                <rect x={0} y={0} width={w} height={margin} fill="#fca5a5" opacity={0.25} />
+                <rect x={0} y={h - margin} width={w} height={margin} fill="#fca5a5" opacity={0.25} />
+                <rect x={0} y={margin} width={margin} height={h - margin * 2} fill="#fca5a5" opacity={0.25} />
+                <rect x={w - margin} y={margin} width={margin} height={h - margin * 2} fill="#fca5a5" opacity={0.25} />
+                {/* Dashed safe-zone border */}
+                <rect x={margin} y={margin} width={Math.max(0, w - margin * 2)} height={Math.max(0, h - margin * 2)}
+                  fill="none" stroke="#ef4444" strokeWidth={1} strokeDasharray="4 3" opacity={0.6} />
+              </>
+            );
+          })()}
+
+          {/* Cutout circles */}
+          {isGlass && (node.cutouts || []).map((c: Cutout) => {
+            const cx = c.x * scale, cy = c.y * scale;
+            const r = (c.diameter / 2) * scale;
+            const margin = minEdgeIn * scale;
+            const isTempered = node.glassType === 'tempered' || glazingSpec.lite1.glassType === 'tempered';
+            const violation = isTempered && (
+              cx - r < margin || cy - r < margin ||
+              w - (cx + r) < margin || h - (cy + r) < margin
+            );
+            const stroke = violation ? '#dc2626' : '#10b981';
+            const fill = violation ? '#fee2e2' : '#d1fae5';
+            return (
+              <g key={c.id} style={{ pointerEvents: 'none' }}>
+                <circle cx={cx} cy={cy} r={r} fill={fill} stroke={stroke} strokeWidth={1.5} opacity={0.85} />
+                {/* Crosshair */}
+                <line x1={cx - r * 0.6} y1={cy} x2={cx + r * 0.6} y2={cy} stroke={stroke} strokeWidth={0.8} />
+                <line x1={cx} y1={cy - r * 0.6} x2={cx} y2={cy + r * 0.6} stroke={stroke} strokeWidth={0.8} />
+                {violation && (
+                  <text x={cx} y={cy - r - 3} textAnchor="middle" fontSize={8} fill="#dc2626" fontWeight="700">!</text>
+                )}
+              </g>
+            );
+          })}
+
           {!isGlass && <PaneIndicators type={node.paneType} w={w} h={h} />}
 
-          {/* Dimension label — top quarter, not overlapping arrows */}
+          {/* Dimension label — top quarter */}
           {w > 50 && h > 35 && (
             <>
               <rect x={w / 2 - fontSize * 2.5} y={h * 0.15 - fontSize * 0.7} width={fontSize * 5} height={fontSize * 1.4} fill="white" opacity={0.8} rx={2} />
@@ -1202,7 +1277,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
             <text x={w / 2} y={h * 0.85} textAnchor="middle"
               fontSize={Math.max(7, fontSize * 0.75)} fill="#059669"
               style={{ pointerEvents: 'none', userSelect: 'none' }}>
-              {node.glassThickness}" · {GLASS_TYPES.find(g => g.value === node.glassType)?.label}
+              {glazingSpec.lite1.thicknessMM}mm · {LITE_GLASS_TYPES.find(g => g.value === glazingSpec.lite1.glassType)?.label}
             </text>
           )}
           <rect x={0} y={0} width={w} height={h} fill="transparent" />
@@ -1410,17 +1485,74 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
                           {EDGE_FINISHES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
                         </select>
                       </div>
-                      <div>
-                        <label className="block text-xs font-semibold mb-1 text-neutral-600">Cutouts</label>
-                        <input type="number" min={0} max={20}
-                          value={(selectedNode as PaneNode).cutouts || 0}
-                          onChange={e => updateProp('cutouts', Number(e.target.value))}
-                          className="w-full p-2 border border-neutral-300 rounded focus:ring-2 focus:ring-emerald-500 outline-none text-xs" />
-                        {(selectedNode as PaneNode).glassType === 'tempered' && ((selectedNode as PaneNode).cutouts || 0) > 0 && (() => {
-                          const thkMap: Record<string, number> = { '1/4': 0.25, '3/8': 0.375, '1/2': 0.5, '5/8': 0.625, '3/4': 0.75 };
-                          const thk = thkMap[(selectedNode as PaneNode).glassThickness || '1/2'] || 0.5;
-                          return <p className="text-[10px] text-amber-600 mt-1">⚠ Min {(thk * 5).toFixed(2)}" from edges (5× thickness)</p>;
-                        })()}
+
+                      {/* Cutout placement */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-semibold text-neutral-600">Cutouts</label>
+                          <span className="text-[10px] text-neutral-400">{((selectedNode as PaneNode).cutouts || []).length} placed</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1">
+                            <label className="block text-[10px] text-neutral-400 mb-1">Hole ⌀ (in)</label>
+                            <input type="number" min={0.25} max={6} step={0.125}
+                              value={cutoutDiameter}
+                              onChange={e => setCutoutDiameter(Number(e.target.value))}
+                              className="w-full p-1.5 border border-neutral-300 rounded text-xs focus:ring-1 focus:ring-emerald-500 outline-none" />
+                          </div>
+                          <div className="flex-1">
+                            <label className="block text-[10px] text-neutral-400 mb-1">≈ mm</label>
+                            <div className="p-1.5 bg-neutral-50 rounded border border-neutral-200 text-xs text-neutral-500 font-mono">{(cutoutDiameter * 25.4).toFixed(0)}mm</div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setCutoutMode(m => !m)}
+                          className={`w-full py-1.5 rounded text-xs font-semibold border transition-colors flex items-center justify-center gap-1.5
+                            ${cutoutMode ? 'bg-emerald-600 text-white border-emerald-600 animate-pulse' : 'bg-white text-neutral-600 border-neutral-300 hover:bg-emerald-50 hover:border-emerald-400'}`}>
+                          {cutoutMode ? '🎯 Click canvas to place' : '+ Place Cutout'}
+                        </button>
+                        {cutoutMode && (
+                          <p className="text-[10px] text-emerald-600 text-center">Click anywhere on glass pane. Press Esc to cancel.</p>
+                        )}
+
+                        {/* Min edge distance info */}
+                        {(glazingSpec.lite1.glassType === 'tempered' || (selectedNode as PaneNode).glassType === 'tempered') && (
+                          <div className="p-2 bg-red-50 border border-red-200 rounded text-[10px] text-red-700">
+                            <span className="font-bold">Min edge dist:</span> {minEdgeIn.toFixed(3)}" ({(minEdgeIn * 25.4).toFixed(1)}mm)<br/>
+                            <span className="text-red-500">= {glazingSpec.lite1.thicknessMM}mm × 5</span>
+                          </div>
+                        )}
+
+                        {/* Cutout list */}
+                        {((selectedNode as PaneNode).cutouts || []).length > 0 && (
+                          <div className="space-y-1 max-h-32 overflow-y-auto">
+                            {((selectedNode as PaneNode).cutouts as Cutout[]).map((c, i) => {
+                              const paneData = panesList.find(p => p.id === selectedNode!.id);
+                              const pW = paneData ? paneData.w / scale : overallWidth;
+                              const pH = paneData ? paneData.h / scale : overallHeight;
+                              const isTempered = glazingSpec.lite1.glassType === 'tempered' || (selectedNode as PaneNode).glassType === 'tempered';
+                              const r = c.diameter / 2;
+                              const violation = isTempered && (
+                                c.x - r < minEdgeIn || c.y - r < minEdgeIn ||
+                                pW - (c.x + r) < minEdgeIn || pH - (c.y + r) < minEdgeIn
+                              );
+                              return (
+                                <div key={c.id} className={`flex items-center justify-between p-1.5 rounded text-[10px] border
+                                  ${violation ? 'bg-red-50 border-red-300 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
+                                  <span className="font-mono">
+                                    {violation ? '⚠' : '✓'} #{i+1} {toFraction(c.x)},{toFraction(c.y)} ⌀{toFraction(c.diameter)}
+                                  </span>
+                                  <button onClick={() => {
+                                    const newTree = updateNode(tree, selectedNode!.id, n => ({
+                                      ...n, cutouts: ((n as PaneNode).cutouts || []).filter((x: Cutout) => x.id !== c.id)
+                                    }));
+                                    pushState({ ...editorState, tree: newTree });
+                                  }} className="text-red-400 hover:text-red-600 ml-1">✕</button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
