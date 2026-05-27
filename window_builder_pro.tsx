@@ -296,12 +296,23 @@ function mmToFrac(mm: number): string {
 // ─────────────────────────────────────────────
 // EXPORT GENERATORS
 // ─────────────────────────────────────────────
+function lamConstruction(lite: LiteSpec): string {
+  const il = INTERLAYERS.find(x => x.value === (lite.interlayer || 'pvb-0.76'));
+  const ilMM = il?.mm || 0.76;
+  const half = ((Number(lite.thicknessMM) - ilMM) / 2).toFixed(2);
+  const plyName = lite.glassType === 'lam-tempered' ? 'Temp' : lite.glassType === 'lam-hs' ? 'HS' : 'Ann';
+  const intName = il ? il.label.split(' ')[0] : 'PVB';
+  return `${half}mm ${plyName} + ${ilMM}mm ${intName} + ${half}mm ${plyName}`;
+}
+
 function liteSpecLabel(lite: LiteSpec): string {
   const thk = LITE_THICKNESS_MM.find(t => t.mm === lite.thicknessMM);
   const type = LITE_GLASS_TYPES.find(t => t.value === lite.glassType);
   const tint = lite.tint !== 'clear' ? ` ${lite.tint}` : '';
   const lowe = lite.hasLowE && lite.lowEProduct ? ` + ${lite.lowEProduct} @#${lite.lowESurface}` : '';
-  return `${thk?.label || lite.thicknessMM} ${type?.label || ''}${tint}${lowe}`;
+  const isLam = lite.glassType === 'laminated' || lite.glassType === 'lam-tempered' || lite.glassType === 'lam-hs';
+  const lamNote = isLam ? ` [${lamConstruction(lite)}]` : '';
+  return `${thk?.label || lite.thicknessMM}mm ${type?.label || ''}${tint}${lowe}${lamNote}`;
 }
 
 function glazingSpecLabel(spec: GlazingSpec): string {
@@ -1809,12 +1820,8 @@ function LiteSection({ lite, liteNum, onChange }: {
             className="w-full text-xs border border-neutral-300 rounded px-1.5 py-1 bg-white outline-none focus:ring-1 focus:ring-blue-400">
             {INTERLAYERS.map(il => <option key={il.value} value={il.value}>{il.label}</option>)}
           </select>
-          <p className="text-[9px] text-neutral-400 mt-1">
-            {(() => {
-              const il = INTERLAYERS.find(x => x.value === (lite.interlayer || 'pvb-0.76'));
-              const halfGlass = ((Number(lite.thicknessMM) - (il?.mm || 0.76)) / 2).toFixed(2);
-              return `≈ ${halfGlass}mm + ${il?.mm}mm interlayer + ${halfGlass}mm`;
-            })()}
+          <p className="text-[9px] text-neutral-400 mt-1 font-mono">
+            {lamConstruction(lite)}
           </p>
         </div>
       )}
