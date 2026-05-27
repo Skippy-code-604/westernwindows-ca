@@ -1255,7 +1255,13 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
   const [scale, setScale] = useState(10);
   const [glazingSpec, setGlazingSpec] = useState<GlazingSpec>(unit.glazingSpec || makeDefaultGlazing());
   const [cutoutMode, setCutoutMode] = useState(false);
-  const [cutoutDiameter, setCutoutDiameter] = useState(1.25); // inches, ~32mm standard fitting hole
+  const [cutoutDiameter, setCutoutDiameter] = useState(1.25);
+  const [sidebarZoom, setSidebarZoom] = useState<number>(() => parseFloat(localStorage.getItem('wp-sidebar-zoom') || '1'));
+  const [leftW, setLeftW] = useState<number>(() => parseInt(localStorage.getItem('wp-left-w') || '288'));
+  const [rightW, setRightW] = useState<number>(() => parseInt(localStorage.getItem('wp-right-w') || '256'));
+  const [dimEditActive, setDimEditActive] = useState(false);
+  const [dimWInput, setDimWInput] = useState('');
+  const [dimHInput, setDimHInput] = useState('');
   const svgRef = useRef<SVGSVGElement>(null);
 
   const { tree, overallWidth, overallHeight, projectMode } = editorState;
@@ -1277,6 +1283,36 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
   const redo = useCallback(() => {
     if (historyIdx < history.length - 1) { setEditorState(history[historyIdx + 1]); setHistoryIdx(i => i + 1); }
   }, [history, historyIdx]);
+
+  // Persist sidebar prefs
+  useEffect(() => { localStorage.setItem('wp-sidebar-zoom', String(sidebarZoom)); }, [sidebarZoom]);
+  useEffect(() => { localStorage.setItem('wp-left-w', String(leftW)); }, [leftW]);
+  useEffect(() => { localStorage.setItem('wp-right-w', String(rightW)); }, [rightW]);
+
+  const startSidebarDrag = useCallback((e: React.MouseEvent, side: 'left' | 'right') => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = side === 'left' ? leftW : rightW;
+    const onMove = (me: MouseEvent) => {
+      const dx = me.clientX - startX;
+      const nw = Math.max(180, Math.min(520, startW + (side === 'left' ? dx : -dx)));
+      if (side === 'left') setLeftW(nw); else setRightW(nw);
+    };
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [leftW, rightW]);
+
+  const openDimEdit = () => {
+    setDimWInput(String(overallWidth));
+    setDimHInput(String(overallHeight));
+    setDimEditActive(true);
+  };
+  const confirmDimEdit = () => {
+    const w = parseFloat(dimWInput), h = parseFloat(dimHInput);
+    if (w > 0 && h > 0) pushState({ ...editorState, overallWidth: w, overallHeight: h });
+    setDimEditActive(false);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1551,6 +1587,11 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
             </button>
           ))}
           <div className="w-px bg-neutral-700 mx-1" />
+          <button onClick={() => setSidebarZoom(z => parseFloat(Math.min(1.5, z + 0.1).toFixed(1)))}
+            title="Increase sidebar text size" className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors text-xs font-bold">A+</button>
+          <button onClick={() => setSidebarZoom(z => parseFloat(Math.max(0.75, z - 0.1).toFixed(1)))}
+            title="Decrease sidebar text size" className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors text-xs font-bold">A−</button>
+          <div className="w-px bg-neutral-700 mx-1" />
           <button onClick={undo} disabled={historyIdx === 0} title="Ctrl+Z"
             className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors disabled:opacity-30">
             <Undo2 className="w-3.5 h-3.5" />
@@ -1564,7 +1605,8 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
 
       <div className="flex flex-1 overflow-hidden">
         {/* LEFT SIDEBAR */}
-        <div className="w-72 bg-white border-r border-neutral-200 flex flex-col z-10 overflow-y-auto">
+        <div style={{ width: leftW, minWidth: 180, maxWidth: 520, zoom: sidebarZoom, flexShrink: 0 }}
+          className="bg-white border-r border-neutral-200 flex flex-col z-10 overflow-y-auto">
           <div className="p-4 space-y-4">
 
             {/* Mode */}
@@ -1834,6 +1876,10 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
             </div>
           </div>
         </div>
+        {/* LEFT RESIZE HANDLE */}
+        <div onMouseDown={e => startSidebarDrag(e, 'left')}
+          style={{ width: 5, cursor: 'col-resize', flexShrink: 0, zIndex: 20, background: 'transparent' }}
+          className="hover:bg-blue-400 active:bg-blue-500 transition-colors" />
 
         {/* CENTER CANVAS */}
         <div className="flex-1 relative flex flex-col bg-slate-100 overflow-hidden"
@@ -1872,26 +1918,64 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
                 <g transform={`translate(${innerOX},${innerOY})`}>
                   {renderNode(tree, 0, 0, innerW, innerH)}
                 </g>
-                {/* Width dim */}
-                <g transform="translate(0,-34)">
+        {/* WIDTH DIM — clickable */}
+                <g transform="translate(0,-34)" style={{ cursor: 'pointer' }}
+                  onClick={e => { e.stopPropagation(); openDimEdit(); }}>
                   <line x1={0} y1={0} x2={overallWidth * scale} y2={0} stroke="#94a3b8" strokeWidth={1} markerStart="url(#arrow-s)" markerEnd="url(#arrow)" />
-                  <rect x={(overallWidth * scale) / 2 - 38} y={-11} width={76} height={22} fill="white" rx={4} />
-                  <text x={(overallWidth * scale) / 2} y={6} textAnchor="middle" fontSize={13} fontWeight={700} fill="#1e293b">{toFraction(overallWidth)}</text>
+                  <rect x={(overallWidth * scale) / 2 - 42} y={-13} width={84} height={26} fill="white" rx={5} stroke="#e2e8f0" strokeWidth={1} />
+                  <text x={(overallWidth * scale) / 2} y={6} textAnchor="middle" fontSize={13} fontWeight={700} fill="#2563eb">{toFraction(overallWidth)}″</text>
+                  <text x={(overallWidth * scale) / 2} y={-1} textAnchor="middle" fontSize={7} fill="#94a3b8" dy={-8}>click to edit</text>
                 </g>
-                {/* Height dim */}
-                <g transform="translate(-34,0)">
+                {/* HEIGHT DIM — clickable */}
+                <g transform="translate(-34,0)" style={{ cursor: 'pointer' }}
+                  onClick={e => { e.stopPropagation(); openDimEdit(); }}>
                   <line x1={0} y1={0} x2={0} y2={overallHeight * scale} stroke="#94a3b8" strokeWidth={1} markerStart="url(#arrow-s)" markerEnd="url(#arrow)" />
-                  <rect x={-11} y={(overallHeight * scale) / 2 - 38} width={22} height={76} fill="white" rx={4} />
-                  <text x={0} y={(overallHeight * scale) / 2} textAnchor="middle" dominantBaseline="middle" fontSize={13} fontWeight={700} fill="#1e293b"
-                    transform={`rotate(-90 0,${(overallHeight * scale) / 2})`}>{toFraction(overallHeight)}</text>
+                  <rect x={-13} y={(overallHeight * scale) / 2 - 42} width={26} height={84} fill="white" rx={5} stroke="#e2e8f0" strokeWidth={1} />
+                  <text x={0} y={(overallHeight * scale) / 2} textAnchor="middle" dominantBaseline="middle" fontSize={13} fontWeight={700} fill="#2563eb"
+                    transform={`rotate(-90 0,${(overallHeight * scale) / 2})`}>{toFraction(overallHeight)}″</text>
                 </g>
               </g>
             </svg>
           </div>
+          {/* Dimension edit overlay */}
+          {dimEditActive && (
+            <div className="absolute inset-0 flex items-start justify-center pt-14 z-50" style={{ pointerEvents: 'none' }}>
+              <div className="bg-white rounded-xl shadow-2xl border border-neutral-200 p-4" style={{ pointerEvents: 'auto' }}
+                onClick={e => e.stopPropagation()}>
+                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-2.5">Edit Dimensions</p>
+                <div className="flex items-end gap-3">
+                  <div>
+                    <label className="block text-[10px] text-neutral-400 mb-1">Width (in)</label>
+                    <input type="number" step="0.0625" min="1" value={dimWInput}
+                      onChange={e => setDimWInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') confirmDimEdit(); if (e.key === 'Escape') setDimEditActive(false); }}
+                      className="w-24 border border-neutral-300 rounded px-2 py-1.5 text-sm font-mono outline-none focus:ring-2 focus:ring-blue-400" autoFocus />
+                  </div>
+                  <span className="text-neutral-400 text-xl mb-1.5">×</span>
+                  <div>
+                    <label className="block text-[10px] text-neutral-400 mb-1">Height (in)</label>
+                    <input type="number" step="0.0625" min="1" value={dimHInput}
+                      onChange={e => setDimHInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') confirmDimEdit(); if (e.key === 'Escape') setDimEditActive(false); }}
+                      className="w-24 border border-neutral-300 rounded px-2 py-1.5 text-sm font-mono outline-none focus:ring-2 focus:ring-blue-400" />
+                  </div>
+                  <button onClick={confirmDimEdit}
+                    className="h-9 px-3 bg-blue-600 text-white rounded text-sm font-bold hover:bg-blue-700 transition-colors">✓</button>
+                  <button onClick={() => setDimEditActive(false)}
+                    className="h-9 px-3 bg-neutral-100 text-neutral-600 rounded text-sm hover:bg-neutral-200 transition-colors">✕</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
+        {/* RIGHT RESIZE HANDLE */}
+        <div onMouseDown={e => startSidebarDrag(e, 'right')}
+          style={{ width: 5, cursor: 'col-resize', flexShrink: 0, zIndex: 20, background: 'transparent' }}
+          className="hover:bg-blue-400 active:bg-blue-500 transition-colors" />
         {/* RIGHT SIDEBAR — BOM */}
-        <div className="w-64 bg-white border-l border-neutral-200 flex flex-col z-10">
+        <div style={{ width: rightW, minWidth: 160, maxWidth: 480, zoom: sidebarZoom, flexShrink: 0 }}
+          className="bg-white border-l border-neutral-200 flex flex-col z-10">
           <div className="p-3 border-b border-neutral-200 bg-neutral-50">
             <h2 className="text-xs font-bold text-neutral-800 uppercase tracking-wider flex items-center gap-1.5">
               <XSquare className="w-3.5 h-3.5" /> Bill of Materials
