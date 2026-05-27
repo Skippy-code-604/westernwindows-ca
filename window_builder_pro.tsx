@@ -1694,7 +1694,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
                   </div>
                   <div className="font-semibold text-neutral-900">{toFraction(wIn)} × {toFraction(hIn)}</div>
                   <div className="text-neutral-400 mt-0.5">{area} ft²
-                    {projectMode === 'glass' && (pane.cutouts || 0) > 0 && <span className="ml-1.5 text-amber-600">⬤ {pane.cutouts}</span>}
+                    {projectMode === 'glass' && (pane.cutouts || []).length > 0 && <span className="ml-1.5 text-amber-600">⬤ {(pane.cutouts || []).length} holes</span>}
                   </div>
                 </div>
               );
