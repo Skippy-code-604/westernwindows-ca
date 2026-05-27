@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react'
 import {
   Settings, Maximize2, XSquare, GripHorizontal, GripVertical,
   Download, Trash2, MousePointer2, Save, FolderOpen, Printer,
-  Undo2, Redo2, Square, Plus, ArrowLeft, Copy, Edit2, CheckCircle
+  Undo2, Redo2, Square, Plus, ArrowLeft, Copy, Edit2, CheckCircle, FileText
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────
@@ -14,6 +14,8 @@ declare global {
       saveFile: (content: string) => Promise<{ success: boolean; filePath?: string }>;
       openFile: () => Promise<{ success: boolean; content?: string }>;
       exportSVG: (svg: string) => Promise<{ success: boolean }>;
+      exportPDF: (html: string, name: string) => Promise<{ success: boolean }>;
+      exportCSV: (csv: string, name: string) => Promise<{ success: boolean }>;
       print: () => Promise<void>;
     };
   }
@@ -271,6 +273,141 @@ function calcIguThicknessMM(spec: GlazingSpec): number {
 function mmToFrac(mm: number): string {
   const inches = mm / 25.4;
   return toFraction(Math.round(inches * 16) / 16);
+}
+
+// ─────────────────────────────────────────────
+// EXPORT GENERATORS
+// ─────────────────────────────────────────────
+function liteSpecLabel(lite: LiteSpec): string {
+  const thk = LITE_THICKNESS_MM.find(t => t.mm === lite.thicknessMM);
+  const type = LITE_GLASS_TYPES.find(t => t.value === lite.glassType);
+  const tint = lite.tint !== 'clear' ? ` ${lite.tint}` : '';
+  const lowe = lite.hasLowE && lite.lowEProduct ? ` + ${lite.lowEProduct} @#${lite.lowESurface}` : '';
+  return `${thk?.label || lite.thicknessMM} ${type?.label || ''}${tint}${lowe}`;
+}
+
+function glazingSpecLabel(spec: GlazingSpec): string {
+  if (spec.build === 'single') return liteSpecLabel(spec.lite1);
+  const spacer1 = spec.spacer1 ? `${spec.spacer1.widthMM}mm ${SPACER_TYPES.find(s => s.value === spec.spacer1!.type)?.label || spec.spacer1.type}` : '';
+  const gas1 = GAS_FILLS.find(g => g.value === spec.gasFill1)?.label || '';
+  if (spec.build === 'double') return `${liteSpecLabel(spec.lite1)} / ${spacer1} / ${gas1} / ${spec.lite2 ? liteSpecLabel(spec.lite2) : ''}`;
+  const spacer2 = spec.spacer2 ? `${spec.spacer2.widthMM}mm ${SPACER_TYPES.find(s => s.value === spec.spacer2!.type)?.label || spec.spacer2.type}` : '';
+  const gas2 = GAS_FILLS.find(g => g.value === spec.gasFill2)?.label || '';
+  return `${liteSpecLabel(spec.lite1)} / ${spacer1} / ${gas1} / ${spec.lite2 ? liteSpecLabel(spec.lite2) : ''} / ${spacer2} / ${gas2} / ${spec.lite3 ? liteSpecLabel(spec.lite3) : ''}`;
+}
+
+function generateCSV(project: Project): string {
+  const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+  const header = ['#','Name','Location','Qty','Width (in)','Height (in)','Area (ft²)','Mode','IGU Build','Glazing Spec','IGU Total (mm)','IGU Total (in)'];
+  const rows = project.units.map((u, i) => {
+    const totalMM = calcIguThicknessMM(u.glazingSpec);
+    return [
+      i + 1, u.name, u.location, u.quantity,
+      u.overallWidth, u.overallHeight,
+      (u.overallWidth * u.overallHeight / 144 * u.quantity).toFixed(2),
+      u.projectMode, u.glazingSpec.build,
+      glazingSpecLabel(u.glazingSpec),
+      totalMM, mmToFrac(totalMM),
+    ].map(esc).join(',');
+  });
+  return [header.map(esc).join(','), ...rows].join('\r\n');
+}
+
+function generateQuoteHTML(project: Project): string {
+  const date = new Date(project.date).toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' });
+  const totalUnits = project.units.reduce((s, u) => s + u.quantity, 0);
+  const totalArea = project.units.reduce((s, u) => s + u.overallWidth * u.overallHeight / 144 * u.quantity, 0);
+
+  const rows = project.units.map((u, i) => {
+    const totalMM = calcIguThicknessMM(u.glazingSpec);
+    const area = (u.overallWidth * u.overallHeight / 144 * u.quantity).toFixed(2);
+    const spec = glazingSpecLabel(u.glazingSpec);
+    const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+    return `
+      <tr style="background:${bg}">
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:600;color:#64748b">${i + 1}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600">${u.name}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#64748b">${u.location || '—'}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center">${u.quantity}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-family:monospace;font-size:13px">${toFraction(u.overallWidth)} × ${toFraction(u.overallHeight)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center">${u.glazingSpec.build.toUpperCase()}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:11px;color:#334155">${spec}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-family:monospace;font-size:12px">${totalMM}mm<br><span style="color:#94a3b8;font-size:10px">${mmToFrac(totalMM)}</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;color:#64748b">${area} ft²</td>
+      </tr>`;
+  }).join('');
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; color: #1e293b; background: white; }
+  @page { size: Letter landscape; margin: 0.5in 0.6in; }
+  @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; padding-bottom: 16px; border-bottom: 3px solid #1e293b; }
+  .company { font-size: 22px; font-weight: 800; color: #1e293b; letter-spacing: -0.5px; }
+  .tagline { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+  .project-meta { text-align: right; }
+  .project-name { font-size: 16px; font-weight: 700; color: #1e40af; }
+  .meta-row { font-size: 11px; color: #64748b; margin-top: 3px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  thead tr { background: #1e293b; color: white; }
+  thead th { padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; white-space: nowrap; }
+  thead th:not(:first-child) { border-left: 1px solid #334155; }
+  .totals-row { background: #f1f5f9; font-weight: 700; }
+  .totals-row td { padding: 10px 12px; border-top: 2px solid #cbd5e1; }
+  .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 10px; color: #94a3b8; }
+  .badge { display: inline-block; padding: 2px 8px; background: #dbeafe; color: #1d4ed8; border-radius: 99px; font-size: 10px; font-weight: 600; }
+</style>
+</head><body>
+  <div class="header">
+    <div>
+      <div class="company">Fenestration Pro</div>
+      <div class="tagline">Window &amp; Glass Configurator — Supplier Quote</div>
+    </div>
+    <div class="project-meta">
+      <div class="project-name">${project.name}</div>
+      ${project.customer ? `<div class="meta-row"><strong>Customer:</strong> ${project.customer}</div>` : ''}
+      <div class="meta-row"><strong>Date:</strong> ${date}</div>
+      <div class="meta-row" style="margin-top:6px">
+        <span class="badge">${totalUnits} units</span>
+        <span class="badge" style="margin-left:4px;background:#dcfce7;color:#15803d">${totalArea.toFixed(1)} ft² total</span>
+      </div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:36px">#</th>
+        <th>Unit Name</th>
+        <th>Location</th>
+        <th style="width:40px;text-align:center">Qty</th>
+        <th style="width:120px;text-align:center">Dimensions</th>
+        <th style="width:60px;text-align:center">Build</th>
+        <th>Glazing Specification</th>
+        <th style="width:80px;text-align:center">IGU Total</th>
+        <th style="width:70px;text-align:right">Area</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+    <tfoot>
+      <tr class="totals-row">
+        <td colspan="3" style="padding:10px 12px">TOTALS</td>
+        <td style="padding:10px 12px;text-align:center;border-left:1px solid #e2e8f0">${totalUnits}</td>
+        <td colspan="4" style="padding:10px 12px;border-left:1px solid #e2e8f0"></td>
+        <td style="padding:10px 12px;text-align:right;border-left:1px solid #e2e8f0">${totalArea.toFixed(2)} ft²</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  ${project.notes ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;margin-bottom:20px"><strong style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b">Notes</strong><p style="margin-top:6px;color:#334155">${project.notes}</p></div>` : ''}
+
+  <div class="footer">
+    <span>Generated by Fenestration Pro · ${new Date().toLocaleString()}</span>
+    <span>All dimensions in inches unless noted. Verify dimensions before ordering.</span>
+  </div>
+</body></html>`;
 }
 
 // ─────────────────────────────────────────────
@@ -583,9 +720,32 @@ function ProjectManager({
   const [nameVal, setNameVal] = useState(project.name);
 
   const totalArea = project.units.reduce((sum, u) => {
-    const scale = 10;
     return sum + u.overallWidth * u.overallHeight / 144 * u.quantity;
   }, 0);
+
+  const handleExportPDF = async () => {
+    const html = generateQuoteHTML(project);
+    const name = `${project.name} - Quote.pdf`.replace(/[^a-zA-Z0-9\s\-_.]/g, '');
+    if (window.electronAPI) {
+      await window.electronAPI.exportPDF(html, name);
+    } else {
+      const blob = new Blob([html], { type: 'text/html' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = name.replace('.pdf', '.html'); a.click();
+    }
+  };
+
+  const handleExportCSV = async () => {
+    const csv = generateCSV(project);
+    const name = `${project.name} - Quote.csv`.replace(/[^a-zA-Z0-9\s\-_.]/g, '');
+    if (window.electronAPI) {
+      await window.electronAPI.exportCSV(csv, name);
+    } else {
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = name; a.click();
+    }
+  };
 
   return (
     <div className="flex flex-col h-screen bg-neutral-50" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
@@ -624,6 +784,15 @@ function ProjectManager({
               {icon} {label}
             </button>
           ))}
+          <div className="w-px bg-neutral-700 mx-1" />
+          <button onClick={handleExportPDF} disabled={project.units.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium text-white bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            <FileText className="w-4 h-4" /> Export PDF
+          </button>
+          <button onClick={handleExportCSV} disabled={project.units.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium text-white bg-neutral-700 hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            <Download className="w-4 h-4" /> CSV
+          </button>
         </div>
       </div>
 

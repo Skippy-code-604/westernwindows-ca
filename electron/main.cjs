@@ -34,10 +34,10 @@ function createWindow() {
 // --- IPC: Save File ---
 ipcMain.handle('dialog:saveFile', async (_, content) => {
   const { filePath, canceled } = await dialog.showSaveDialog({
-    title: 'Save Configuration',
-    defaultPath: 'window-config.fenconfig',
+    title: 'Save Project',
+    defaultPath: 'project.fenconfig',
     filters: [
-      { name: 'Fenestration Config', extensions: ['fenconfig'] },
+      { name: 'Fenestration Project', extensions: ['fenconfig'] },
       { name: 'JSON', extensions: ['json'] },
     ],
   });
@@ -53,9 +53,9 @@ ipcMain.handle('dialog:saveFile', async (_, content) => {
 // --- IPC: Open File ---
 ipcMain.handle('dialog:openFile', async () => {
   const { filePaths, canceled } = await dialog.showOpenDialog({
-    title: 'Open Configuration',
+    title: 'Open Project',
     filters: [
-      { name: 'Fenestration Config', extensions: ['fenconfig'] },
+      { name: 'Fenestration Project', extensions: ['fenconfig'] },
       { name: 'JSON', extensions: ['json'] },
     ],
     properties: ['openFile'],
@@ -81,6 +81,55 @@ ipcMain.handle('dialog:exportSVG', async (_, svgContent) => {
     fs.writeFileSync(filePath, svgContent, 'utf-8');
     shell.openPath(filePath);
     return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// --- IPC: Export PDF (supplier quote) ---
+ipcMain.handle('dialog:exportPDF', async (_, htmlContent, defaultName) => {
+  const { filePath, canceled } = await dialog.showSaveDialog({
+    title: 'Export Quote as PDF',
+    defaultPath: defaultName || 'quote.pdf',
+    filters: [{ name: 'PDF Document', extensions: ['pdf'] }],
+  });
+  if (canceled || !filePath) return { success: false };
+
+  // Create a hidden window to render the HTML and print to PDF
+  const pdfWin = new BrowserWindow({
+    show: false,
+    webPreferences: { contextIsolation: true, nodeIntegration: false },
+  });
+
+  try {
+    await pdfWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+    const pdfBuffer = await pdfWin.webContents.printToPDF({
+      pageSize: 'Letter',
+      printBackground: true,
+      margins: { top: 0.5, bottom: 0.5, left: 0.6, right: 0.6 },
+    });
+    fs.writeFileSync(filePath, pdfBuffer);
+    shell.openPath(filePath);
+    return { success: true, filePath };
+  } catch (err) {
+    return { success: false, error: err.message };
+  } finally {
+    pdfWin.destroy();
+  }
+});
+
+// --- IPC: Export CSV ---
+ipcMain.handle('dialog:exportCSV', async (_, csvContent, defaultName) => {
+  const { filePath, canceled } = await dialog.showSaveDialog({
+    title: 'Export Quote as CSV',
+    defaultPath: defaultName || 'quote.csv',
+    filters: [{ name: 'CSV File', extensions: ['csv'] }],
+  });
+  if (canceled || !filePath) return { success: false };
+  try {
+    fs.writeFileSync(filePath, csvContent, 'utf-8');
+    shell.openPath(filePath);
+    return { success: true, filePath };
   } catch (err) {
     return { success: false, error: err.message };
   }
