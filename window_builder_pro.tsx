@@ -879,14 +879,15 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
   const [dragState, setDragState] = useState<any>(null);
   const [snapIndicator, setSnapIndicator] = useState<number | null>(null);
   const [scale, setScale] = useState(10);
+  const [glazingSpec, setGlazingSpec] = useState<GlazingSpec>(unit.glazingSpec || makeDefaultGlazing());
   const svgRef = useRef<SVGSVGElement>(null);
 
   const { tree, overallWidth, overallHeight, projectMode } = editorState;
 
-  // Sync back to project whenever editor state changes
+  // Sync back to project whenever state changes
   useEffect(() => {
-    onSave({ tree, overallWidth, overallHeight, projectMode });
-  }, [editorState]);
+    onSave({ tree, overallWidth, overallHeight, projectMode, glazingSpec });
+  }, [editorState, glazingSpec]);
 
   const pushState = useCallback((next: EditorState) => {
     setHistory(h => [...h.slice(0, historyIdx + 1), next]);
@@ -1293,6 +1294,9 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
               )}
             </div>
 
+            {/* Glazing Spec */}
+            <GlazingPanel spec={glazingSpec} onChange={setGlazingSpec} />
+
             {/* Shortcuts */}
             <div className="p-2.5 bg-neutral-50 rounded-lg border border-neutral-100">
               <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5">Shortcuts</p>
@@ -1403,6 +1407,259 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// GLAZING PANEL
+// ─────────────────────────────────────────────
+function LiteSection({ lite, liteNum, onChange }: {
+  lite: LiteSpec; liteNum: number;
+  onChange: (updated: LiteSpec) => void;
+}) {
+  const mfr = LOW_E_DATABASE.find(m => m.name === lite.lowEManufacturer);
+  const product = mfr?.products.find(p => p.name === lite.lowEProduct);
+
+  const setMfr = (name: string) => {
+    const m = LOW_E_DATABASE.find(x => x.name === name);
+    const firstProd = m?.products[0];
+    onChange({ ...lite, lowEManufacturer: name, lowEProduct: firstProd?.name, lowESurface: firstProd?.surfaces[0] });
+  };
+
+  const setProd = (name: string) => {
+    const p = mfr?.products.find(x => x.name === name);
+    onChange({ ...lite, lowEProduct: name, lowESurface: p?.surfaces[0] });
+  };
+
+  const liteColors: Record<number, string> = { 1: 'text-blue-600', 2: 'text-emerald-600', 3: 'text-purple-600' };
+  const liteBg: Record<number, string> = { 1: 'bg-blue-50 border-blue-200', 2: 'bg-emerald-50 border-emerald-200', 3: 'bg-purple-50 border-purple-200' };
+
+  return (
+    <div className={`rounded-lg border p-2.5 space-y-2 ${liteBg[liteNum]}`}>
+      <p className={`text-[10px] font-bold uppercase tracking-wider ${liteColors[liteNum]}`}>
+        ● Lite {liteNum}
+      </p>
+
+      {/* Thickness */}
+      <div>
+        <label className="block text-[10px] text-neutral-500 mb-1">Thickness</label>
+        <div className="flex flex-wrap gap-1">
+          {LITE_THICKNESS_MM.map(t => (
+            <button key={t.mm} onClick={() => onChange({ ...lite, thicknessMM: t.mm })}
+              title={t.frac}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-mono border transition-colors
+                ${lite.thicknessMM === t.mm ? 'bg-neutral-800 text-white border-neutral-800' : 'bg-white text-neutral-600 border-neutral-300 hover:border-neutral-500'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Glass type */}
+      <div>
+        <label className="block text-[10px] text-neutral-500 mb-1">Type</label>
+        <select value={lite.glassType} onChange={e => onChange({ ...lite, glassType: e.target.value as LiteGlassType })}
+          className="w-full text-xs border border-neutral-300 rounded px-1.5 py-1 bg-white outline-none focus:ring-1 focus:ring-blue-400">
+          {LITE_GLASS_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+      </div>
+
+      {/* Tint */}
+      <div>
+        <label className="block text-[10px] text-neutral-500 mb-1">Tint</label>
+        <div className="flex gap-1.5">
+          {LITE_TINTS.map(t => (
+            <button key={t.value} onClick={() => onChange({ ...lite, tint: t.value })}
+              title={t.label}
+              className={`w-6 h-6 rounded-full border-2 transition-all ${lite.tint === t.value ? 'border-neutral-800 scale-110' : 'border-neutral-300 hover:border-neutral-500'}`}
+              style={{ backgroundColor: t.color }} />
+          ))}
+        </div>
+      </div>
+
+      {/* Low-E */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-[10px] text-neutral-500">Low-E Coating</label>
+          <button onClick={() => onChange({ ...lite, hasLowE: !lite.hasLowE })}
+            className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${lite.hasLowE ? 'bg-blue-500' : 'bg-neutral-300'}`}>
+            <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${lite.hasLowE ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+          </button>
+        </div>
+        {lite.hasLowE && (
+          <div className="space-y-1.5 mt-1">
+            <select value={lite.lowEManufacturer || ''} onChange={e => setMfr(e.target.value)}
+              className="w-full text-xs border border-neutral-300 rounded px-1.5 py-1 bg-white outline-none focus:ring-1 focus:ring-blue-400">
+              <option value="">— Select Manufacturer —</option>
+              {LOW_E_DATABASE.map(m => <option key={m.name} value={m.name}>{m.name}</option>)}
+            </select>
+            {mfr && (
+              <select value={lite.lowEProduct || ''} onChange={e => setProd(e.target.value)}
+                className="w-full text-xs border border-neutral-300 rounded px-1.5 py-1 bg-white outline-none focus:ring-1 focus:ring-blue-400">
+                {mfr.products.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+              </select>
+            )}
+            {product && (
+              <div>
+                <label className="block text-[10px] text-neutral-400 mb-1">Surface</label>
+                <div className="flex gap-1">
+                  {product.surfaces.map(s => (
+                    <button key={s} onClick={() => onChange({ ...lite, lowESurface: s })}
+                      className={`px-2 py-0.5 rounded text-xs font-mono border transition-colors
+                        ${lite.lowESurface === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-neutral-600 border-neutral-300 hover:border-blue-400'}`}>
+                      #{s}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[9px] text-neutral-400 mt-1 italic">{product.notes}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SpacerSection({ spacer, gasFill, spacerNum, onChange, onGasChange }: {
+  spacer: SpacerSpec; gasFill: GasFill; spacerNum: number;
+  onChange: (s: SpacerSpec) => void;
+  onGasChange: (g: GasFill) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 space-y-2">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">◆ Spacer {spacerNum}</p>
+      <div>
+        <label className="block text-[10px] text-neutral-500 mb-1">Type</label>
+        <select value={spacer.type} onChange={e => onChange({ ...spacer, type: e.target.value as SpacerType })}
+          className="w-full text-xs border border-neutral-300 rounded px-1.5 py-1 bg-white outline-none focus:ring-1 focus:ring-amber-400">
+          {SPACER_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="block text-[10px] text-neutral-500 mb-1">Width</label>
+        <div className="flex flex-wrap gap-1">
+          {SPACER_WIDTHS.map(w => (
+            <button key={w.mm} onClick={() => onChange({ ...spacer, widthMM: w.mm })}
+              title={w.frac}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-mono border transition-colors
+                ${spacer.widthMM === w.mm ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-neutral-600 border-neutral-300 hover:border-amber-400'}`}>
+              {w.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <label className="block text-[10px] text-neutral-500 mb-1">Gas Fill</label>
+        <div className="flex flex-wrap gap-1">
+          {GAS_FILLS.map(g => (
+            <button key={g.value} onClick={() => onGasChange(g.value)}
+              className={`px-1.5 py-0.5 rounded text-[10px] border transition-colors
+                ${gasFill === g.value ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-neutral-600 border-neutral-300 hover:border-slate-400'}`}>
+              {g.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GlazingPanel({ spec, onChange }: { spec: GlazingSpec; onChange: (s: GlazingSpec) => void }) {
+  const [open, setOpen] = useState(true);
+  const totalMM = calcIguThicknessMM(spec);
+  const totalLabel = `${totalMM}mm (≈ ${mmToFrac(totalMM)})`;
+
+  const updateLite1 = (l: LiteSpec) => onChange({ ...spec, lite1: l });
+  const updateLite2 = (l: LiteSpec) => onChange({ ...spec, lite2: l });
+  const updateLite3 = (l: LiteSpec) => onChange({ ...spec, lite3: l });
+  const updateSpacer1 = (s: SpacerSpec) => onChange({ ...spec, spacer1: s });
+  const updateSpacer2 = (s: SpacerSpec) => onChange({ ...spec, spacer2: s });
+
+  const setBuild = (build: IguBuild) => {
+    const next: GlazingSpec = { ...spec, build };
+    if (build === 'single') { delete next.spacer1; delete next.gasFill1; delete next.lite2; delete next.spacer2; delete next.gasFill2; delete next.lite3; }
+    if (build === 'double') {
+      next.spacer1 = spec.spacer1 || { type: 'aluminum', widthMM: '12' };
+      next.gasFill1 = spec.gasFill1 || 'argon-90';
+      next.lite2 = spec.lite2 || makeDefaultLite();
+      delete next.spacer2; delete next.gasFill2; delete next.lite3;
+    }
+    if (build === 'triple') {
+      next.spacer1 = spec.spacer1 || { type: 'aluminum', widthMM: '12' };
+      next.gasFill1 = spec.gasFill1 || 'argon-90';
+      next.lite2 = spec.lite2 || makeDefaultLite();
+      next.spacer2 = spec.spacer2 || { type: 'aluminum', widthMM: '12' };
+      next.gasFill2 = spec.gasFill2 || 'argon-90';
+      next.lite3 = spec.lite3 || makeDefaultLite();
+    }
+    onChange(next);
+  };
+
+  return (
+    <div className="border border-neutral-200 rounded-lg overflow-hidden">
+      <button onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-3 py-2 bg-neutral-100 hover:bg-neutral-200 transition-colors">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-neutral-700 uppercase tracking-wider">Glazing Spec</span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${spec.build === 'single' ? 'bg-neutral-200 text-neutral-600' : spec.build === 'double' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+            {spec.build.toUpperCase()}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-mono text-neutral-500">{totalLabel}</span>
+          <span className="text-neutral-400 text-xs">{open ? '▲' : '▼'}</span>
+        </div>
+      </button>
+
+      {open && (
+        <div className="p-2.5 space-y-2.5 bg-white">
+          {/* Build selector */}
+          <div>
+            <label className="block text-[10px] text-neutral-500 mb-1.5">IGU Build</label>
+            <div className="grid grid-cols-3 gap-1">
+              {(['single', 'double', 'triple'] as IguBuild[]).map(b => (
+                <button key={b} onClick={() => setBuild(b)}
+                  className={`py-1 rounded text-xs font-semibold border capitalize transition-colors
+                    ${spec.build === b ? 'bg-neutral-800 text-white border-neutral-800' : 'bg-white text-neutral-600 border-neutral-300 hover:bg-neutral-50'}`}>
+                  {b}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <LiteSection lite={spec.lite1} liteNum={1} onChange={updateLite1} />
+
+          {(spec.build === 'double' || spec.build === 'triple') && spec.spacer1 && (
+            <SpacerSection
+              spacer={spec.spacer1} gasFill={spec.gasFill1 || 'argon-90'} spacerNum={1}
+              onChange={updateSpacer1} onGasChange={g => onChange({ ...spec, gasFill1: g })}
+            />
+          )}
+
+          {(spec.build === 'double' || spec.build === 'triple') && spec.lite2 && (
+            <LiteSection lite={spec.lite2} liteNum={2} onChange={updateLite2} />
+          )}
+
+          {spec.build === 'triple' && spec.spacer2 && (
+            <SpacerSection
+              spacer={spec.spacer2} gasFill={spec.gasFill2 || 'argon-90'} spacerNum={2}
+              onChange={updateSpacer2} onGasChange={g => onChange({ ...spec, gasFill2: g })}
+            />
+          )}
+
+          {spec.build === 'triple' && spec.lite3 && (
+            <LiteSection lite={spec.lite3} liteNum={3} onChange={updateLite3} />
+          )}
+
+          {/* Total thickness summary */}
+          <div className="flex items-center justify-between p-2 bg-neutral-900 rounded-lg">
+            <span className="text-[10px] text-neutral-400 font-semibold uppercase tracking-wider">Total IGU</span>
+            <span className="text-sm font-bold text-white font-mono">{totalLabel}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
