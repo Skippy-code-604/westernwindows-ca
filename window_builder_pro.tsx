@@ -249,34 +249,34 @@ interface LowEManufacturer { name: string; products: LowEProduct[]; }
 const LOW_E_DATABASE: LowEManufacturer[] = [
   { name: 'Cardinal', products: [
     { name: 'LoE-i89',  surfaces: [1, 4], notes: 'Hard coat — surface 1 (ext) or 4 (int)' },
-    { name: 'LoE-180',  surfaces: [2, 3], notes: 'Single silver — balanced VT/SHGC' },
-    { name: 'LoE-272',  surfaces: [2, 3], notes: 'Dual silver — high VT, balanced' },
-    { name: 'LoE-340',  surfaces: [2, 3], notes: 'High solar control' },
-    { name: 'LoE-366',  surfaces: [2, 3], notes: 'Triple silver — premium performance' },
+    { name: 'LoE-180',  surfaces: [2, 3], notes: 'Single silver — Surf 2 or 3 (both valid)' },
+    { name: 'LoE-272',  surfaces: [2, 3], notes: 'Dual silver — Surf 2 or 3 (both valid)' },
+    { name: 'LoE-340',  surfaces: [2, 3], notes: 'High solar control — Surf 2 or 3' },
+    { name: 'LoE-366',  surfaces: [2, 3], notes: 'Triple silver — Surf 2 or 3' },
   ]},
   { name: 'Vitro (PPG)', products: [
-    { name: 'Solarban 60',    surfaces: [2], notes: 'Standard dual silver' },
-    { name: 'Solarban 70XL',  surfaces: [2], notes: 'High VT dual silver' },
-    { name: 'Solarban 72',    surfaces: [2], notes: 'Balanced VT and SHGC' },
-    { name: 'Solarban 90',    surfaces: [2], notes: 'High solar control' },
-    { name: 'Solarban R100',  surfaces: [2], notes: 'Triple silver — premium' },
-    { name: 'Vistacool',      surfaces: [2], notes: 'Tinted low-e' },
+    { name: 'Solarban 60',    surfaces: [2, 3], notes: 'Standard dual silver — Surf 2 recommended' },
+    { name: 'Solarban 70XL',  surfaces: [2, 3], notes: 'High VT dual silver — Surf 2 recommended' },
+    { name: 'Solarban 72',    surfaces: [2, 3], notes: 'Balanced VT/SHGC — Surf 2 recommended' },
+    { name: 'Solarban 90',    surfaces: [2, 3], notes: 'High solar control — Surf 2 recommended' },
+    { name: 'Solarban R100',  surfaces: [2, 3], notes: 'Triple silver — Surf 2 recommended' },
+    { name: 'Vistacool',      surfaces: [2, 3], notes: 'Tinted low-e — Surf 2 recommended' },
   ]},
   { name: 'AGC', products: [
-    { name: 'Stopray Vision-50', surfaces: [2], notes: 'Solar control, neutral' },
-    { name: 'Stopray Vision-60', surfaces: [2], notes: 'High VT, low SHGC' },
-    { name: 'Planibel LoE',      surfaces: [2], notes: 'General purpose' },
+    { name: 'Stopray Vision-50', surfaces: [2, 3], notes: 'Solar control — Surf 2 recommended' },
+    { name: 'Stopray Vision-60', surfaces: [2, 3], notes: 'High VT, low SHGC — Surf 2 recommended' },
+    { name: 'Planibel LoE',      surfaces: [2, 3], notes: 'General purpose — Surf 2 recommended' },
   ]},
   { name: 'Guardian', products: [
-    { name: 'ClimaGuard Premium 2',  surfaces: [2], notes: 'Energy Star qualified' },
-    { name: 'SunGuard SNX 62/27',    surfaces: [2], notes: 'High solar control' },
-    { name: 'SunGuard HP Silver 40', surfaces: [2], notes: 'Neutral appearance' },
-    { name: 'UltraClear',            surfaces: [2], notes: 'Low-iron base + LoE' },
+    { name: 'ClimaGuard Premium 2',  surfaces: [2, 3], notes: 'Energy Star — Surf 2 recommended' },
+    { name: 'SunGuard SNX 62/27',    surfaces: [2, 3], notes: 'High solar control — Surf 2 recommended' },
+    { name: 'SunGuard HP Silver 40', surfaces: [2, 3], notes: 'Neutral — Surf 2 recommended' },
+    { name: 'UltraClear',            surfaces: [2, 3], notes: 'Low-iron base + LoE — Surf 2 recommended' },
   ]},
   { name: 'Pilkington', products: [
-    { name: 'Optitherm S3',     surfaces: [3], notes: 'High perf — surface 3 only' },
-    { name: 'Energy Advantage', surfaces: [2], notes: 'Standard energy performance' },
-    { name: 'Optiwhite LoE',    surfaces: [2], notes: 'Low-iron ultra-clear base' },
+    { name: 'Optitherm S3',     surfaces: [3], notes: 'Surf 3 only (interior lite)' },
+    { name: 'Energy Advantage', surfaces: [2, 3], notes: 'Standard energy performance' },
+    { name: 'Optiwhite LoE',    surfaces: [2, 3], notes: 'Low-iron ultra-clear base' },
   ]},
 ];
 
@@ -2191,15 +2191,25 @@ function LiteSection({ lite, liteNum, onChange }: {
   const mfr = LOW_E_DATABASE.find(m => m.name === lite.lowEManufacturer);
   const product = mfr?.products.find(p => p.name === lite.lowEProduct);
 
+  // Valid surfaces depend on which lite position this is:
+  // Lite 1 (exterior)  → surfaces 1 & 2
+  // Lite 2 (mid/int)   → surfaces 3 & 4
+  // Lite 3 (interior)  → surfaces 5 & 6
+  const validSurfaces = liteNum === 1 ? [1, 2] : liteNum === 2 ? [3, 4] : [5, 6];
+  const defaultSurface = validSurfaces[1]; // inner cavity face is most common
+
   const setMfr = (name: string) => {
     const m = LOW_E_DATABASE.find(x => x.name === name);
     const firstProd = m?.products[0];
-    onChange({ ...lite, lowEManufacturer: name, lowEProduct: firstProd?.name, lowESurface: firstProd?.surfaces[0] });
+    // Pick default surface: prefer product-recommended that's valid for this lite, else use position default
+    const recSurf = firstProd?.surfaces.find(s => validSurfaces.includes(s)) ?? defaultSurface;
+    onChange({ ...lite, lowEManufacturer: name, lowEProduct: firstProd?.name, lowESurface: recSurf });
   };
 
   const setProd = (name: string) => {
     const p = mfr?.products.find(x => x.name === name);
-    onChange({ ...lite, lowEProduct: name, lowESurface: p?.surfaces[0] });
+    const recSurf = p?.surfaces.find(s => validSurfaces.includes(s)) ?? defaultSurface;
+    onChange({ ...lite, lowEProduct: name, lowESurface: recSurf });
   };
 
   const liteColors: Record<number, string> = { 1: 'text-blue-600', 2: 'text-emerald-600', 3: 'text-purple-600' };
@@ -2315,15 +2325,27 @@ function LiteSection({ lite, liteNum, onChange }: {
             )}
             {product && (
               <div>
-                <label className="block text-[10px] text-neutral-400 mb-1">Surface</label>
+                <label className="block text-[10px] text-neutral-400 mb-1">
+                  Surface
+                  <span className="text-neutral-300 ml-1">(* = mfr recommended)</span>
+                </label>
                 <div className="flex gap-1">
-                  {product.surfaces.map(s => (
-                    <button key={s} onClick={() => onChange({ ...lite, lowESurface: s })}
-                      className={`px-2 py-0.5 rounded text-xs font-mono border transition-colors
-                        ${lite.lowESurface === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-neutral-600 border-neutral-300 hover:border-blue-400'}`}>
-                      #{s}
-                    </button>
-                  ))}
+                  {validSurfaces.map(s => {
+                    const isRecommended = product.surfaces.includes(s);
+                    const isSelected = lite.lowESurface === s;
+                    return (
+                      <button key={s} onClick={() => onChange({ ...lite, lowESurface: s })}
+                        title={isRecommended ? 'Manufacturer recommended' : 'Valid for this lite position'}
+                        className={`px-2.5 py-1 rounded text-xs font-mono border transition-colors
+                          ${isSelected
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : isRecommended
+                              ? 'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100'
+                              : 'bg-white text-neutral-500 border-neutral-300 hover:border-blue-400'}`}>
+                        #{s}{isRecommended ? '*' : ''}
+                      </button>
+                    );
+                  })}
                 </div>
                 <p className="text-[9px] text-neutral-400 mt-1 italic">{product.notes}</p>
               </div>
