@@ -72,14 +72,16 @@ interface GlazingSpec {
 
 interface Cutout {
   id: string;
-  x: number; // inches from left edge of pane
-  y: number; // inches from top edge of pane
+  x: number;        // inches from left edge of pane
+  y: number;        // inches from top edge of pane
   diameter: number; // inches
+  mirrored?: boolean; // auto-placed as L↔R mirror of another hole
 }
 interface PaneNode {
   id: string; type: 'pane'; paneType: WindowPaneType;
   glassType?: GlassType; glassThickness?: GlassThickness;
   edgeFinish?: EdgeFinish; cutouts?: Cutout[];
+  mirrorCutouts?: boolean; // auto-mirror holes L↔R
 }
 interface SplitNode {
   id: string; type: 'split'; direction: 'V' | 'H';
@@ -139,22 +141,18 @@ const SNAP_POINTS = [1 / 3, 1 / 2, 2 / 3];
 const SNAP_ZONE = 0.03;
 
 const WINDOW_PANE_TYPES: { value: WindowPaneType; label: string; group: string }[] = [
-  { value: 'fixed', label: 'Fixed (Picture)', group: 'Fixed' },
-  { value: 'slide-l', label: 'Slider — Active Left (XO)', group: 'Sliding' },
-  { value: 'slide-r', label: 'Slider — Active Right (OX)', group: 'Sliding' },
-  { value: 'patio-xo', label: 'Patio XO — 2-lite, active left', group: 'Sliding' },
-  { value: 'patio-ox', label: 'Patio OX — 2-lite, active right', group: 'Sliding' },
-  { value: 'patio-xox', label: 'Patio XOX — 3-lite, center active', group: 'Sliding' },
-  { value: 'patio-oxxxo', label: 'Patio OXXXO — 5-lite, 3 active', group: 'Sliding' },
-  { value: 'slide-u', label: 'Single Hung — Up', group: 'Hung' },
-  { value: 'slide-d', label: 'Single Hung — Down', group: 'Hung' },
-  { value: 'double-hung', label: 'Double Hung', group: 'Hung' },
-  { value: 'casement-l', label: 'Casement — Hinged Left', group: 'Casement' },
-  { value: 'casement-r', label: 'Casement — Hinged Right', group: 'Casement' },
-  { value: 'awning', label: 'Awning — Hinged Top', group: 'Casement' },
-  { value: 'hopper', label: 'Hopper — Hinged Bottom', group: 'Casement' },
-  { value: 'tilt-turn', label: 'Tilt & Turn', group: 'Casement' },
-  { value: 'bifold', label: 'Bi-fold', group: 'Specialty' },
+  { value: 'fixed',       label: 'Fixed (Picture)',         group: 'Fixed' },
+  { value: 'slide-l',    label: 'Slides Left',              group: 'Sliding' },
+  { value: 'slide-r',    label: 'Slides Right',             group: 'Sliding' },
+  { value: 'slide-u',    label: 'Single Hung — Up',         group: 'Hung' },
+  { value: 'slide-d',    label: 'Single Hung — Down',       group: 'Hung' },
+  { value: 'double-hung',label: 'Double Hung',              group: 'Hung' },
+  { value: 'casement-l', label: 'Casement — Hinged Left',   group: 'Casement' },
+  { value: 'casement-r', label: 'Casement — Hinged Right',  group: 'Casement' },
+  { value: 'awning',     label: 'Awning — Hinged Top',      group: 'Casement' },
+  { value: 'hopper',     label: 'Hopper — Hinged Bottom',   group: 'Casement' },
+  { value: 'tilt-turn',  label: 'Tilt & Turn',              group: 'Casement' },
+  { value: 'bifold',     label: 'Bi-fold',                  group: 'Specialty' },
 ];
 
 const GLASS_TYPES: { value: GlassType; label: string }[] = [
@@ -1256,6 +1254,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
   const [glazingSpec, setGlazingSpec] = useState<GlazingSpec>(unit.glazingSpec || makeDefaultGlazing());
   const [cutoutMode, setCutoutMode] = useState(false);
   const [cutoutDiameter, setCutoutDiameter] = useState(1.25);
+  const [cutoutBlocked, setCutoutBlocked] = useState(false);
   const [sidebarZoom, setSidebarZoom] = useState<number>(() => parseFloat(localStorage.getItem('wp-sidebar-zoom') || '1'));
   const [leftW, setLeftW] = useState<number>(() => parseInt(localStorage.getItem('wp-left-w') || '288'));
   const [rightW, setRightW] = useState<number>(() => parseInt(localStorage.getItem('wp-right-w') || '256'));
@@ -1345,6 +1344,38 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
     pushState({ ...editorState, tree: newTree });
   };
 
+  // ─── SLIDING PRESETS ──────────────────────────────────────────────────────
+  // Rebuilds the selected pane as a properly-split sliding unit.
+  // X = operable, O = fixed.  L-side X slides right, R-side X slides left.
+  const handleSlidingPreset = (config: 'xo' | 'ox' | 'xox' | 'oxo' | 'oxxxo') => {
+    const base = selectedNode?.type === 'pane'
+      ? { glassType: (selectedNode as PaneNode).glassType, glassThickness: (selectedNode as PaneNode).glassThickness, edgeFinish: (selectedNode as PaneNode).edgeFinish, cutouts: [] as Cutout[] }
+      : { glassType: 'clear' as GlassType, glassThickness: '1/4' as GlassThickness, edgeFinish: 'seamed' as EdgeFinish, cutouts: [] as Cutout[] };
+
+    const pane = (type: WindowPaneType): PaneNode => ({ id: uuid(), type: 'pane', paneType: type, ...base });
+    const vsplit = (ratio: number, left: TreeNode, right: TreeNode): SplitNode =>
+      ({ id: uuid(), type: 'split', direction: 'V', ratio, children: [left, right] });
+
+    const configs: Record<string, TreeNode> = {
+      xo:    vsplit(0.5,   pane('slide-r'), pane('fixed')),
+      ox:    vsplit(0.5,   pane('fixed'),   pane('slide-l')),
+      xox:   vsplit(0.333, pane('slide-r'), vsplit(0.5, pane('fixed'),   pane('slide-l'))),
+      oxo:   vsplit(0.333, pane('fixed'),   vsplit(0.5, pane('slide-r'), pane('fixed'))),
+      oxxxo: vsplit(0.2,   pane('fixed'),   vsplit(0.25, pane('slide-r'),
+               vsplit(0.333, pane('slide-r'), vsplit(0.5, pane('slide-l'), pane('fixed'))))),
+    };
+
+    const newSubTree = configs[config];
+    let newTree: TreeNode;
+    if (selectedId === 'root') {
+      newTree = { ...newSubTree, id: 'root' };
+    } else {
+      newTree = updateNode(tree, selectedId, () => newSubTree);
+    }
+    pushState({ ...editorState, tree: newTree });
+    setSelectedId('root');
+  };
+
   const handleDelete = () => {
     if (selectedId === 'root') { pushState({ ...editorState, tree: makeInitialPane() }); return; }
     const newTree = deleteNode(tree, selectedId) || makeInitialPane();
@@ -1403,7 +1434,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
   const glassMM = parseInt(glazingSpec.lite1.thicknessMM || '6');
   const minEdgeIn = (glassMM * 5) / 25.4;
 
-  const handlePlaceCutout = (e: React.MouseEvent, nodeId: string, nodeX: number, nodeY: number) => {
+  const handlePlaceCutout = (e: React.MouseEvent, nodeId: string, nodeX: number, nodeY: number, paneWpx: number, paneHpx: number) => {
     e.stopPropagation();
     const svg = svgRef.current;
     if (!svg) return;
@@ -1412,9 +1443,40 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
     const svgPt = pt.matrixTransform(svg.getScreenCTM()!.inverse());
     const cx = (svgPt.x - (px + innerOX + nodeX)) / scale;
     const cy = (svgPt.y - (py + innerOY + nodeY)) / scale;
-    const newCutout: Cutout = { id: uuid(), x: cx, y: cy, diameter: cutoutDiameter };
+    const paneWin = paneWpx / scale;
+    const paneHin = paneHpx / scale;
+    const r = cutoutDiameter / 2;
+    const isTempered = glazingSpec.lite1.glassType === 'tempered';
+
+    // Block if rim would enter exclusion zone
+    const tooClose = isTempered && (
+      cx - r < minEdgeIn || cy - r < minEdgeIn ||
+      paneWin - (cx + r) < minEdgeIn || paneHin - (cy + r) < minEdgeIn
+    );
+    if (tooClose) {
+      setCutoutBlocked(true);
+      setTimeout(() => setCutoutBlocked(false), 800);
+      return;
+    }
+
+    const pane = findNode(tree, nodeId) as PaneNode;
+    const newCutouts: Cutout[] = [{ id: uuid(), x: cx, y: cy, diameter: cutoutDiameter }];
+
+    // Auto-mirror L↔R if enabled
+    if (pane?.mirrorCutouts) {
+      const mx = paneWin - cx;
+      const noOverlap = Math.abs(mx - cx) >= cutoutDiameter;
+      const inBounds = mx - r >= 0 && mx + r <= paneWin;
+      const mirrorEdgeOk = !isTempered || (
+        mx - r >= minEdgeIn && paneWin - (mx + r) >= minEdgeIn
+      );
+      if (noOverlap && inBounds && mirrorEdgeOk) {
+        newCutouts.push({ id: uuid(), x: mx, y: cy, diameter: cutoutDiameter, mirrored: true });
+      }
+    }
+
     const newTree = updateNode(tree, nodeId, n => ({
-      ...n, cutouts: [...((n as PaneNode).cutouts || []), newCutout]
+      ...n, cutouts: [...((n as PaneNode).cutouts || []), ...newCutouts]
     }));
     pushState({ ...editorState, tree: newTree });
   };
@@ -1433,7 +1495,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
         <g key={node.id} transform={`translate(${x},${y})`}
           onClick={e => {
             e.stopPropagation();
-            if (cutoutMode && isGlass) { handlePlaceCutout(e, node.id, x, y); return; }
+            if (cutoutMode && isGlass) { handlePlaceCutout(e, node.id, x, y, w, h); return; }
             setSelectedId(node.id);
           }}
           style={{ cursor: cutoutMode && isGlass ? 'crosshair' : 'pointer' }}>
@@ -1469,24 +1531,28 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
 
           {/* Cutout circles */}
           {isGlass && (node.cutouts || []).map((c: Cutout) => {
-            const cx = c.x * scale, cy = c.y * scale;
+            const ccx = c.x * scale, ccy = c.y * scale;
             const r = (c.diameter / 2) * scale;
             const margin = minEdgeIn * scale;
             const isTempered = node.glassType === 'tempered' || glazingSpec.lite1.glassType === 'tempered';
             const violation = isTempered && (
-              cx - r < margin || cy - r < margin ||
-              w - (cx + r) < margin || h - (cy + r) < margin
+              ccx - r < margin || ccy - r < margin ||
+              w - (ccx + r) < margin || h - (ccy + r) < margin
             );
-            const stroke = violation ? '#dc2626' : '#10b981';
-            const fill = violation ? '#fee2e2' : '#d1fae5';
+            const stroke = violation ? '#dc2626' : c.mirrored ? '#3b82f6' : '#10b981';
+            const fill = violation ? '#fee2e2' : c.mirrored ? '#dbeafe' : '#d1fae5';
+            const dashArray = c.mirrored ? '3 2' : undefined;
             return (
               <g key={c.id} style={{ pointerEvents: 'none' }}>
-                <circle cx={cx} cy={cy} r={r} fill={fill} stroke={stroke} strokeWidth={1.5} opacity={0.85} />
-                {/* Crosshair */}
-                <line x1={cx - r * 0.6} y1={cy} x2={cx + r * 0.6} y2={cy} stroke={stroke} strokeWidth={0.8} />
-                <line x1={cx} y1={cy - r * 0.6} x2={cx} y2={cy + r * 0.6} stroke={stroke} strokeWidth={0.8} />
+                <circle cx={ccx} cy={ccy} r={r} fill={fill} stroke={stroke} strokeWidth={1.5}
+                  strokeDasharray={dashArray} opacity={0.85} />
+                <line x1={ccx - r * 0.6} y1={ccy} x2={ccx + r * 0.6} y2={ccy} stroke={stroke} strokeWidth={0.8} />
+                <line x1={ccx} y1={ccy - r * 0.6} x2={ccx} y2={ccy + r * 0.6} stroke={stroke} strokeWidth={0.8} />
                 {violation && (
-                  <text x={cx} y={cy - r - 3} textAnchor="middle" fontSize={8} fill="#dc2626" fontWeight="700">!</text>
+                  <text x={ccx} y={ccy - r - 3} textAnchor="middle" fontSize={8} fill="#dc2626" fontWeight="700">!</text>
+                )}
+                {c.mirrored && !violation && (
+                  <text x={ccx} y={ccy - r - 3} textAnchor="middle" fontSize={7} fill="#3b82f6" fontWeight="700">M</text>
                 )}
               </g>
             );
@@ -1680,8 +1746,24 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
                   </div>
 
                   {projectMode === 'window' && (
+                    <div className="p-2.5 bg-blue-50 rounded-lg border border-blue-200">
+                      <label className="block text-xs font-semibold mb-1 text-blue-700">Sliding Presets</label>
+                      <p className="text-[10px] text-blue-500 mb-2">X = slides, O = fixed &mdash; auto-builds layout</p>
+                      <div className="grid grid-cols-5 gap-1 mb-1">
+                        {(['xo','ox','xox','oxo','oxxxo'] as const).map(cfg => (
+                          <button key={cfg} onClick={() => handleSlidingPreset(cfg)}
+                            title={{ xo:'2-lite: left slides right', ox:'2-lite: right slides left', xox:'3-lite: sides slide in', oxo:'3-lite: center slides', oxxxo:'5-lite: 3 inner slide' }[cfg]}
+                            className="py-1.5 rounded border text-[10px] font-bold font-mono uppercase bg-white border-blue-300 hover:bg-blue-600 hover:text-white transition-colors">
+                            {cfg.toUpperCase()}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {projectMode === 'window' && (
                     <div>
-                      <label className="block text-xs font-semibold mb-1 text-neutral-600">Operation</label>
+                      <label className="block text-xs font-semibold mb-1 text-neutral-600">This Pane</label>
                       <select value={(selectedNode as PaneNode).paneType}
                         onChange={e => updateProp('paneType', e.target.value)}
                         className="w-full p-2 border border-neutral-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white text-xs">
@@ -1753,9 +1835,23 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
                       {/* Cutout placement */}
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <label className="text-xs font-semibold text-neutral-600">Cutouts</label>
+                          <label className="text-xs font-semibold text-neutral-600">Holes</label>
                           <span className="text-[10px] text-neutral-400">{((selectedNode as PaneNode).cutouts || []).length} placed</span>
                         </div>
+
+                        {/* Mirror toggle */}
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <div className="relative">
+                            <input type="checkbox"
+                              checked={!!(selectedNode as PaneNode).mirrorCutouts}
+                              onChange={e => updateProp('mirrorCutouts', e.target.checked)}
+                              className="sr-only" />
+                            <div className={`w-8 h-4 rounded-full transition-colors ${(selectedNode as PaneNode).mirrorCutouts ? 'bg-blue-500' : 'bg-neutral-300'}`} />
+                            <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${(selectedNode as PaneNode).mirrorCutouts ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                          </div>
+                          <span className="text-[10px] text-neutral-600 font-medium">Mirror holes L↔R</span>
+                        </label>
+
                         <div className="flex items-center gap-2">
                           <div className="flex-1">
                             <label className="block text-[10px] text-neutral-400 mb-1">Hole ⌀ (in)</label>
@@ -1773,23 +1869,26 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
                           onClick={() => setCutoutMode(m => !m)}
                           className={`w-full py-1.5 rounded text-xs font-semibold border transition-colors flex items-center justify-center gap-1.5
                             ${cutoutMode ? 'bg-emerald-600 text-white border-emerald-600 animate-pulse' : 'bg-white text-neutral-600 border-neutral-300 hover:bg-emerald-50 hover:border-emerald-400'}`}>
-                          {cutoutMode ? '🎯 Click canvas to place' : '+ Place Cutout'}
+                          {cutoutMode ? '🎯 Click canvas to place' : '+ Place Hole'}
                         </button>
                         {cutoutMode && (
-                          <p className="text-[10px] text-emerald-600 text-center">Click anywhere on glass pane. Press Esc to cancel.</p>
+                          <p className="text-[10px] text-emerald-600 text-center">Click glass pane. Press Esc to cancel.</p>
+                        )}
+                        {cutoutBlocked && (
+                          <p className="text-[10px] text-red-600 text-center font-bold animate-pulse">⛔ Too close to edge — blocked</p>
                         )}
 
                         {/* Min edge distance info */}
                         {(glazingSpec.lite1.glassType === 'tempered' || (selectedNode as PaneNode).glassType === 'tempered') && (
                           <div className="p-2 bg-red-50 border border-red-200 rounded text-[10px] text-red-700">
                             <span className="font-bold">Min edge dist:</span> {minEdgeIn.toFixed(3)}" ({(minEdgeIn * 25.4).toFixed(1)}mm)<br/>
-                            <span className="text-red-500">= {glazingSpec.lite1.thicknessMM}mm × 5</span>
+                            <span className="text-red-500">= {glazingSpec.lite1.thicknessMM}mm × 5 &mdash; ENFORCED</span>
                           </div>
                         )}
 
-                        {/* Cutout list */}
+                        {/* Cutout list with per-hole diameter editing */}
                         {((selectedNode as PaneNode).cutouts || []).length > 0 && (
-                          <div className="space-y-1 max-h-32 overflow-y-auto">
+                          <div className="space-y-1 max-h-40 overflow-y-auto">
                             {((selectedNode as PaneNode).cutouts as Cutout[]).map((c, i) => {
                               const paneData = panesList.find(p => p.id === selectedNode!.id);
                               const pW = paneData ? paneData.w / scale : overallWidth;
@@ -1801,17 +1900,35 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
                                 pW - (c.x + r) < minEdgeIn || pH - (c.y + r) < minEdgeIn
                               );
                               return (
-                                <div key={c.id} className={`flex items-center justify-between p-1.5 rounded text-[10px] border
-                                  ${violation ? 'bg-red-50 border-red-300 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
-                                  <span className="font-mono">
-                                    {violation ? '⚠' : '✓'} #{i+1} {toFraction(c.x)},{toFraction(c.y)} ⌀{toFraction(c.diameter)}
-                                  </span>
-                                  <button onClick={() => {
-                                    const newTree = updateNode(tree, selectedNode!.id, n => ({
-                                      ...n, cutouts: ((n as PaneNode).cutouts || []).filter((x: Cutout) => x.id !== c.id)
-                                    }));
-                                    pushState({ ...editorState, tree: newTree });
-                                  }} className="text-red-400 hover:text-red-600 ml-1">✕</button>
+                                <div key={c.id} className={`p-1.5 rounded text-[10px] border space-y-1
+                                  ${violation ? 'bg-red-50 border-red-300' : c.mirrored ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'}`}>
+                                  <div className="flex items-center justify-between">
+                                    <span className={`font-mono font-semibold ${violation ? 'text-red-700' : c.mirrored ? 'text-blue-700' : 'text-green-700'}`}>
+                                      {violation ? '⚠' : c.mirrored ? '🔵 M' : '✓'} #{i+1} @ {toFraction(c.x)}",{toFraction(c.y)}"
+                                    </span>
+                                    <button onClick={() => {
+                                      const newTree = updateNode(tree, selectedNode!.id, n => ({
+                                        ...n, cutouts: ((n as PaneNode).cutouts || []).filter((x: Cutout) => x.id !== c.id)
+                                      }));
+                                      pushState({ ...editorState, tree: newTree });
+                                    }} className="text-red-400 hover:text-red-600">✕</button>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-neutral-400">⌀</span>
+                                    <input type="number" min={0.25} max={6} step={0.125}
+                                      value={c.diameter}
+                                      onChange={ev => {
+                                        const newD = Number(ev.target.value);
+                                        const newTree = updateNode(tree, selectedNode!.id, n => ({
+                                          ...n, cutouts: ((n as PaneNode).cutouts || []).map((x: Cutout) =>
+                                            x.id === c.id ? { ...x, diameter: newD } : x
+                                          )
+                                        }));
+                                        pushState({ ...editorState, tree: newTree });
+                                      }}
+                                      className="w-14 border border-neutral-300 rounded px-1 py-0.5 text-[10px] font-mono outline-none focus:ring-1 focus:ring-blue-400" />
+                                    <span className="text-neutral-400">in = {(c.diameter * 25.4).toFixed(0)}mm</span>
+                                  </div>
                                 </div>
                               );
                             })}
