@@ -584,6 +584,7 @@ function generateQuoteHTML(project: Project): string {
             <div>
               <span style="font-size:13px;font-weight:700;color:#1e293b">#${i+1} &mdash; ${u.name}</span>
               ${u.location ? `<span style="font-size:11px;color:#64748b;margin-left:8px">${u.location}</span>` : ''}
+              ${u.projectMode === 'window' ? `<span style="font-family:monospace;font-size:14px;font-weight:900;color:#2563eb;letter-spacing:2px;margin-left:10px">${deriveXOString(u.tree)}</span>` : ''}
             </div>
             <div style="font-size:10px;color:#64748b">Qty: <strong>${u.quantity}</strong> &nbsp;&nbsp; IGU: <strong>${totalMM.toFixed(2)}mm (${mmToFrac(totalMM)})</strong></div>
           </div>
@@ -633,6 +634,15 @@ function findNode(node: TreeNode, id: string): TreeNode | null {
   if (node.id === id) return node;
   if (node.type === 'split') for (const c of node.children) { const f = findNode(c, id); if (f) return f; }
   return null;
+}
+
+// Reads the pane tree left-to-right and builds the unit label string.
+// fixed panes → 'O', any operable pane → 'X'
+// Example: XO, OXO, XOX, etc.
+function deriveXOString(node: TreeNode): string {
+  if (node.type === 'pane') return (node as PaneNode).paneType === 'fixed' ? 'O' : 'X';
+  // SplitNode: left child first (V = left/right, H = top/bottom)
+  return node.children.map(deriveXOString).join('');
 }
 
 const makeInitialPane = (id = 'root'): PaneNode => ({
@@ -1560,6 +1570,18 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
 
           {!isGlass && <PaneIndicators type={node.paneType} w={w} h={h} />}
 
+          {/* X / O badge on window panes */}
+          {!isGlass && w > 24 && h > 20 && (() => {
+            const isX = node.paneType !== 'fixed';
+            return (
+              <text x={w - 8} y={h - 6} textAnchor="middle" fontSize={Math.max(8, Math.min(13, w / 6))}
+                fontWeight="900" fill={isX ? '#2563eb' : '#64748b'} opacity={0.55}
+                style={{ pointerEvents: 'none', userSelect: 'none' }}>
+                {isX ? 'X' : 'O'}
+              </text>
+            );
+          })()}
+
           {/* Dimension label — top quarter */}
           {w > 50 && h > 35 && (
             <>
@@ -2098,6 +2120,12 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
               <XSquare className="w-3.5 h-3.5" /> Bill of Materials
             </h2>
             <p className="text-[11px] text-neutral-400 mt-0.5">{panesList.length} pane{panesList.length !== 1 ? 's' : ''}</p>
+            {projectMode === 'window' && (
+              <div className="mt-1.5 flex items-center gap-2">
+                <span className="text-[10px] text-neutral-400">Unit config:</span>
+                <span className="font-mono font-bold text-sm tracking-widest text-blue-700">{deriveXOString(tree)}</span>
+              </div>
+            )}
           </div>
           <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5">
             {panesList.map((pane, idx) => {
