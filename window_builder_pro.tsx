@@ -783,6 +783,7 @@ export default function WindowBuilderApp() {
         onBack={() => setView('project-manager')}
         onSave={(updated) => saveUnit(activeUnit.id, updated)}
         onSaveProject={handleSaveProject}
+        onAddUnit={addUnit}
         isDirty={isDirty}
       />
     );
@@ -1244,10 +1245,10 @@ function MiniPreview({ unit }: { unit: Unit }) {
 // ─────────────────────────────────────────────
 // UNIT EDITOR VIEW
 // ─────────────────────────────────────────────
-function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty }: {
+function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUnit, isDirty }: {
   unit: Unit; projectName: string;
   onBack: () => void; onSave: (updated: Partial<Unit>) => void;
-  onSaveProject: () => void; isDirty: boolean;
+  onSaveProject: () => void; onAddUnit: () => void; isDirty: boolean;
 }) {
   const [editorState, setEditorState] = useState<EditorState>({
     tree: unit.tree,
@@ -1653,19 +1654,25 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
 
   return (
     <div className="flex flex-col h-screen" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
-      {/* Breadcrumb bar */}
-      <div className="bg-neutral-900 text-white px-4 py-2 flex items-center gap-3 text-sm border-b border-neutral-800">
+      {/* Breadcrumb / toolbar */}
+      <div className="bg-neutral-900 text-white px-3 py-2 flex items-center gap-2 text-sm border-b border-neutral-800">
+        {/* Back to project */}
         <button onClick={onBack}
-          className="flex items-center gap-1.5 text-neutral-400 hover:text-white transition-colors">
-          <ArrowLeft className="w-4 h-4" /> {projectName}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-neutral-700 hover:bg-neutral-600 text-neutral-200 hover:text-white transition-colors text-xs font-medium">
+          <ArrowLeft className="w-3.5 h-3.5" /> {projectName}
         </button>
         <span className="text-neutral-600">/</span>
-        <span className="text-white font-semibold">{unit.name}</span>
-        {isDirty && <span className="text-amber-400 text-xs ml-1">● unsaved</span>}
+        <span className="text-white font-semibold truncate max-w-[160px]">{unit.name}</span>
+        {/* Auto-saved indicator */}
+        <span className="text-emerald-400 text-[10px] flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+          unit auto-saved
+        </span>
+        {isDirty && <span className="text-amber-400 text-[10px] ml-0.5">● file unsaved</span>}
         <div className="flex-1" />
-        <div className="flex gap-1">
+        <div className="flex gap-1 items-center">
           {[
-            { icon: <Save className="w-3.5 h-3.5" />, label: 'Save Project', fn: onSaveProject, hot: 'Ctrl+S' },
+            { icon: <Save className="w-3.5 h-3.5" />, label: 'Save File', fn: onSaveProject, hot: 'Ctrl+S' },
             { icon: <Download className="w-3.5 h-3.5" />, label: 'SVG', fn: handleExportSVG, hot: '' },
             { icon: <Printer className="w-3.5 h-3.5" />, label: 'Print', fn: handlePrint, hot: '' },
           ].map(({ icon, label, fn }) => (
@@ -1687,6 +1694,17 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, isDirty 
           <button onClick={redo} disabled={historyIdx >= history.length - 1} title="Ctrl+Y"
             className="px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition-colors disabled:opacity-30">
             <Redo2 className="w-3.5 h-3.5" />
+          </button>
+          <div className="w-px bg-neutral-700 mx-1" />
+          {/* Add next unit — stays in flow */}
+          <button onClick={onAddUnit}
+            className="flex items-center gap-1.5 px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors text-xs font-semibold">
+            <Plus className="w-3.5 h-3.5" /> Add Next Unit
+          </button>
+          {/* Done — go back to project list */}
+          <button onClick={onBack}
+            className="flex items-center gap-1.5 px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors text-xs font-semibold">
+            Done
           </button>
         </div>
       </div>
