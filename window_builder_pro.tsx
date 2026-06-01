@@ -2203,12 +2203,29 @@ function LiteSection({ lite, liteNum, onChange }: {
   const mfr = LOW_E_DATABASE.find(m => m.name === lite.lowEManufacturer);
   const product = mfr?.products.find(p => p.name === lite.lowEProduct);
 
-  // Valid surfaces depend on which lite position this is:
-  // Lite 1 (exterior)  → surfaces 1 & 2
-  // Lite 2 (mid/int)   → surfaces 3 & 4
-  // Lite 3 (interior)  → surfaces 5 & 6
-  const validSurfaces = liteNum === 1 ? [1, 2] : liteNum === 2 ? [3, 4] : [5, 6];
-  const defaultSurface = validSurfaces[1]; // inner cavity face is most common
+  // Surface position labels — explains what each number means to the user
+  const SURFACE_LABELS: Record<number, string> = {
+    1: 'ext. face',   // Lite 1 exterior (weather-exposed)
+    2: 'cavity',      // Lite 1 interior / first cavity face
+    3: 'cavity',      // Lite 2 cavity face
+    4: 'int. face',   // Lite 2 / Lite 2 interior (room-exposed)
+    5: 'cavity',      // Lite 3 cavity face
+    6: 'int. face',   // Lite 3 interior
+  };
+
+  // Hard coat (pyrolytic) can go on exposed surfaces (1, 4, 6).
+  // Soft coat (sputter) MUST stay in the sealed cavity — never Surface 1, 4, or 6.
+  const isHardCoat = !!(lite.lowEProduct?.toLowerCase().includes('hard coat') ||
+                        lite.lowEProduct === 'LoE-i89');
+
+  // Valid surfaces per lite position:
+  //   Soft coat: cavity-facing sides only
+  //   Hard coat: all faces for that lite (incl. exterior/interior)
+  const validSurfaces =
+    liteNum === 1 ? (isHardCoat ? [1, 2] : [2])
+  : liteNum === 2 ? (isHardCoat ? [3, 4] : [3])
+  :                 (isHardCoat ? [5, 6] : [5]);
+  const defaultSurface = validSurfaces[isHardCoat ? 1 : 0]; // cavity face first for soft coat
 
   const setMfr = (name: string) => {
     const m = LOW_E_DATABASE.find(x => x.name === name);
@@ -2374,24 +2391,30 @@ function LiteSection({ lite, liteNum, onChange }: {
                   Surface
                   <span className="text-neutral-300 ml-1">(* = mfr recommended)</span>
                 </label>
-                <div className="flex gap-1">
+                <div className="flex gap-1 flex-wrap">
                   {validSurfaces.map(s => {
                     const isRecommended = product.surfaces.includes(s);
                     const isSelected = lite.lowESurface === s;
+                    const label = SURFACE_LABELS[s] || '';
+                    const isExposed = s === 1 || s === 4 || s === 6;
                     return (
                       <button key={s} onClick={() => onChange({ ...lite, lowESurface: s })}
-                        title={isRecommended ? 'Manufacturer recommended' : 'Valid for this lite position'}
-                        className={`px-2.5 py-1 rounded text-xs font-mono border transition-colors
+                        title={isExposed ? 'Exterior/interior face — hard coat only' : 'Cavity face — recommended position'}
+                        className={`px-2 py-1 rounded text-[10px] font-mono border transition-colors flex flex-col items-center leading-tight
                           ${isSelected
                             ? 'bg-blue-600 text-white border-blue-600'
                             : isRecommended
                               ? 'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100'
-                              : 'bg-white text-neutral-500 border-neutral-300 hover:border-blue-400'}`}>
-                        #{s}{isRecommended ? '*' : ''}
+                              : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'}`}>
+                        <span>#{s}{isRecommended ? '*' : ''}</span>
+                        <span className="text-[8px] opacity-70 font-sans">{label}</span>
                       </button>
                     );
                   })}
                 </div>
+                {isHardCoat && validSurfaces.includes(1) && (
+                  <p className="text-[9px] text-amber-600 mt-1">⚠ Surf #1 = exterior face — hard coat only</p>
+                )}
                 <p className="text-[9px] text-neutral-400 mt-1 italic">{product.notes}</p>
               </div>
             )}
