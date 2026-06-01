@@ -246,9 +246,21 @@ const LITE_TINTS: { value: LiteTint; label: string; color: string }[] = [
 interface LowEProduct { name: string; surfaces: number[]; notes: string; }
 interface LowEManufacturer { name: string; products: LowEProduct[]; }
 
+const LOW_E_GENERIC = 'Generic';
 const LOW_E_DATABASE: LowEManufacturer[] = [
+  // ── Generic terms (field-identified, no specific product needed) ──
+  { name: LOW_E_GENERIC, products: [
+    { name: 'Hard Coat Low-E',              surfaces: [1, 2], notes: 'Pyrolytic (baked-on) — durable, Surf 1 or 2' },
+    { name: 'Soft Coat Low-E',              surfaces: [2, 3], notes: 'Sputter coat — type unspecified' },
+    { name: 'Soft Coat — Single Silver',    surfaces: [2, 3], notes: 'Sputter coat — standard performance' },
+    { name: 'Soft Coat — Dual Silver',      surfaces: [2, 3], notes: 'Sputter coat — improved performance' },
+    { name: 'Soft Coat — Triple Silver',    surfaces: [2, 3], notes: 'Sputter coat — premium performance' },
+    { name: 'Soft Coat — High Solar Ctrl',  surfaces: [2, 3], notes: 'Sputter coat — solar control priority' },
+    { name: 'Low-E (unspecified)',           surfaces: [2, 3], notes: 'Coating type to be confirmed' },
+  ]},
+  // ── Specific brands ──
   { name: 'Cardinal', products: [
-    { name: 'LoE-i89',  surfaces: [1, 4], notes: 'Hard coat — surface 1 (ext) or 4 (int)' },
+    { name: 'LoE-i89',  surfaces: [1, 2], notes: 'Hard coat — surface 1 (ext) or 4 (int)' },
     { name: 'LoE-180',  surfaces: [2, 3], notes: 'Single silver — Surf 2 or 3 (both valid)' },
     { name: 'LoE-272',  surfaces: [2, 3], notes: 'Dual silver — Surf 2 or 3 (both valid)' },
     { name: 'LoE-340',  surfaces: [2, 3], notes: 'High solar control — Surf 2 or 3' },
@@ -2312,10 +2324,43 @@ function LiteSection({ lite, liteNum, onChange }: {
         </div>
         {lite.hasLowE && (
           <div className="space-y-1.5 mt-1">
+            {/* Quick-pick generic buttons */}
+            <div className="grid grid-cols-2 gap-1">
+              {[
+                { label: 'Hard Coat', prod: 'Hard Coat Low-E' },
+                { label: 'Soft Coat', prod: 'Soft Coat Low-E' },
+                { label: 'Dual Silver', prod: 'Soft Coat — Dual Silver' },
+                { label: 'Triple Silver', prod: 'Soft Coat — Triple Silver' },
+              ].map(({ label, prod }) => {
+                const isActive = lite.lowEManufacturer === LOW_E_GENERIC && lite.lowEProduct === prod;
+                return (
+                  <button key={prod}
+                    onClick={() => {
+                      const recSurf = LOW_E_DATABASE.find(m => m.name === LOW_E_GENERIC)
+                        ?.products.find(p => p.name === prod)
+                        ?.surfaces.find(s => validSurfaces.includes(s)) ?? defaultSurface;
+                      onChange({ ...lite, lowEManufacturer: LOW_E_GENERIC, lowEProduct: prod, lowESurface: recSurf });
+                    }}
+                    className={`py-1 px-1.5 rounded border text-[10px] font-medium transition-colors text-left
+                      ${isActive ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-neutral-600 border-neutral-300 hover:border-emerald-400 hover:bg-emerald-50'}`}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="flex-1 h-px bg-neutral-200" />
+              <span className="text-[9px] text-neutral-400 uppercase tracking-wider">or specify brand</span>
+              <div className="flex-1 h-px bg-neutral-200" />
+            </div>
             <select value={lite.lowEManufacturer || ''} onChange={e => setMfr(e.target.value)}
               className="w-full text-xs border border-neutral-300 rounded px-1.5 py-1 bg-white outline-none focus:ring-1 focus:ring-blue-400">
-              <option value="">— Select Manufacturer —</option>
-              {LOW_E_DATABASE.map(m => <option key={m.name} value={m.name}>{m.name}</option>)}
+              <option value="">— Select —</option>
+              <option value={LOW_E_GENERIC}>Generic (field ID)</option>
+              <option disabled>──────────────</option>
+              {LOW_E_DATABASE.filter(m => m.name !== LOW_E_GENERIC).map(m => (
+                <option key={m.name} value={m.name}>{m.name}</option>
+              ))}
             </select>
             {mfr && (
               <select value={lite.lowEProduct || ''} onChange={e => setProd(e.target.value)}
