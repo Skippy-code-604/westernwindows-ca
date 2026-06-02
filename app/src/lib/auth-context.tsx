@@ -25,7 +25,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 // Whitelisted admin emails
-const ADMIN_EMAILS = ['shane@nsccr.ca'];
+const ADMIN_EMAILS = ['shane@nsccr.ca', 'chris@nsccr.ca'];
 
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);

@@ -194,70 +194,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // ===== CONTACT FORM - GOOGLE FORMS INTEGRATION =====
-    const contactForm = document.getElementById('contactForm');
-
-    if (contactForm) {
-        contactForm.addEventListener('submit', function (e) {
-            // Get form field values using the Google Forms entry names
-            const nameField = contactForm.querySelector('[name="entry.202503320"]');
-            const emailField = contactForm.querySelector('[name="entry.978868908"]');
-            const phoneField = contactForm.querySelector('[name="entry.650176977"]');
-            const addressField = contactForm.querySelector('[name="entry.246840981"]');
-            const serviceField = contactForm.querySelector('[name="entry.1152671567"]');
-            const messageField = contactForm.querySelector('[name="message_display"]');
-            const messageWithSourceField = document.getElementById('messageWithSource');
-
-            // Simple validation
-            if (!nameField.value || !emailField.value || !phoneField.value || !addressField.value || !serviceField.value) {
-                e.preventDefault();
-                alert('Please fill in all required fields.');
-                return;
-            }
-
-            // Email validation
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (!emailRegex.test(emailField.value)) {
-                e.preventDefault();
-                alert('Please enter a valid email address.');
-                return;
-            }
-
-            // Phone validation (basic)
-            const phoneRegex = /^[\d\s\-\(\)\+\.]+$/;
-            if (!phoneRegex.test(phoneField.value) || phoneField.value.replace(/\D/g, '').length < 10) {
-                e.preventDefault();
-                alert('Please enter a valid phone number.');
-                return;
-            }
-
-            // Prepend source identifier to message
-            const userMessage = messageField.value || '(No additional message)';
-            messageWithSourceField.value = '[WESTERN WINDOWS] ' + userMessage;
-
-            // Show success UI immediately (form submits to hidden iframe)
-            const submitBtn = contactForm.querySelector('button[type="submit"]');
-            const originalText = submitBtn.innerHTML;
-
-            submitBtn.innerHTML = '<span>Sending...</span>';
-            submitBtn.disabled = true;
-
-            // Show success after a short delay
-            setTimeout(() => {
-                submitBtn.innerHTML = '<span>✓ Message Sent!</span>';
-                submitBtn.style.background = 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)';
-
-                // Reset form
-                contactForm.reset();
-
-                // Reset button after 3 seconds
-                setTimeout(() => {
-                    submitBtn.innerHTML = originalText;
-                    submitBtn.style.background = '';
-                    submitBtn.disabled = false;
-                }, 3000);
-            }, 1000);
-        });
-    }
+    // Obsolete: Handled by the inline API script in index.html to support photo uploads and nodemailer delivery.
 
     // ===== SKIP LINK FOCUS STYLING =====
     const skipLink = document.querySelector('.skip-link');

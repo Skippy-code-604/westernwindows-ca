@@ -32,7 +32,7 @@ app.use(cors({
     },
     credentials: true,
 }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '30mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Prevent CDN caching of API responses
@@ -82,6 +82,7 @@ app.use('/api/suppliers', require('./routes/suppliers'));
 app.use('/api/documents', require('./routes/documents'));
 app.use('/api/email', require('./routes/email'));
 app.use('/api/google-reviews', require('./routes/google-reviews'));
+app.use('/api/contact', require('./routes/contact'));
 
 // Export as Firebase Cloud Function
 exports.api = onRequest({
@@ -89,7 +90,7 @@ exports.api = onRequest({
     invoker: 'public',
     timeoutSeconds: 120,
     memory: '512MiB',
-    secrets: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'EMAIL_FROM', 'EMAIL_CC', 'DRIVE_ROOT_FOLDER_ID', 'DRIVE_IMPERSONATE_EMAIL', 'DRIVE_SA_KEY'],
+    secrets: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'EMAIL_FROM', 'EMAIL_CC', 'DRIVE_ROOT_FOLDER_ID', 'DRIVE_IMPERSONATE_EMAIL', 'DRIVE_SA_KEY', 'GOOGLE_PLACES_API_KEY'],
 }, app);
 
 // --- Local development server ---

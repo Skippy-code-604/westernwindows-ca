@@ -1,28 +1,33 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Admin whitelist check
+
+    // Mirrors ADMIN_EMAILS in app/src/lib/auth-context.tsx
     function isAdmin() {
-      return request.auth != null && 
-             request.auth.token.email in ['shane@nsccr.ca'];
+      return request.auth != null &&
+             request.auth.token.email in ['shane@nsccr.ca', 'chris@nsccr.ca'];
     }
 
-    // Gallery images - public read, admin upload
-    match /gallery/{allPaths=**} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
+    // ============================================================
+    // PUBLIC WEBSITE IMAGES — public read, admin write
+    // (rendered on the live westernwindows.ca site)
+    // ============================================================
+    match /gallery/{allPaths=**}     { allow read: if true; allow write: if isAdmin(); }
+    match /services/{allPaths=**}     { allow read: if true; allow write: if isAdmin(); }
+    match /partners/{allPaths=**}     { allow read: if true; allow write: if isAdmin(); }
+    match /contractors/{allPaths=**}  { allow read: if true; allow write: if isAdmin(); }
 
-    // Document attachments (quote PDFs, etc.) - admin only
-    match /documents/{docId}/attachments/{fileName} {
-      allow read: if request.auth != null;
-      allow write: if isAdmin();
-    }
+    // ============================================================
+    // CRM / BILLING FILES — admin only, NEVER publicly readable
+    // (Impak/SD44 work orders, invoices, POs, supplier statements, photos)
+    // ============================================================
+    match /tickets/{allPaths=**}   { allow read, write: if isAdmin(); }
+    match /documents/{allPaths=**} { allow read, write: if isAdmin(); }
+    match /projects/{allPaths=**}  { allow read, write: if isAdmin(); }
 
-    // General uploads - admin only
-    match /{allPaths=**} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
+    // ============================================================
+    // EVERYTHING ELSE — locked to admin (replaces old public catch-all)
+    // ============================================================
+    match /{allPaths=**} { allow read, write: if isAdmin(); }
   }
 }

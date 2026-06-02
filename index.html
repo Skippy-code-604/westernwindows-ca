@@ -140,7 +140,11 @@
         <nav class="navbar" id="navbar" aria-label="Main navigation">
             <div class="nav-container">
                 <a href="#home" class="nav-logo" aria-label="Western Windows - Home">
-                    <img src="logo.png" alt="Western Windows Logo - Windows Doors & Skylights" width="210" height="70">
+                    <img src="logo.png" alt="Western Windows Logo - Windows Doors & Skylights" width="600" height="200">
+                </a>
+                <a href="tel:604-904-6580" class="nav-phone" aria-label="Call us">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+                    604-904-6580
                 </a>
                 <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation menu" aria-expanded="false"
                     aria-controls="navMenu">
@@ -235,7 +239,7 @@
                         </div>
                         <h3>Window Installation</h3>
                         <p>Energy-efficient windows that reduce utility costs and enhance your home's aesthetic appeal.</p>
-                        <a href="#contact" class="service-link">Learn More →</a>
+                        <a href="#gallery-windows" class="service-link">View Our Work →</a>
                     </article>
                     <article class="service-card service-placeholder featured">
                         <div class="featured-badge">Most Popular</div>
@@ -248,7 +252,7 @@
                         </div>
                         <h3>Door Replacement</h3>
                         <p>Stylish entry doors, patio doors, and French doors.</p>
-                        <a href="#contact" class="service-link">Learn More →</a>
+                        <a href="#gallery-doors" class="service-link">View Our Work →</a>
                     </article>
                     <article class="service-card service-placeholder">
                         <div class="service-icon" aria-hidden="true">
@@ -260,7 +264,7 @@
                         </div>
                         <h3>Skylight Installation</h3>
                         <p>Bring natural light into your home with our premium skylights.</p>
-                        <a href="#contact" class="service-link">Learn More →</a>
+                        <a href="#gallery-skylights" class="service-link">View Our Work →</a>
                     </article>
                 </div>
             </div>
@@ -376,56 +380,59 @@
                     <h2 id="gallery-title" class="section-title">Project Gallery</h2>
                     <p class="section-subtitle">See the transformation we bring to homes across the region.</p>
                 </header>
-                <div class="gallery-grid" id="galleryGrid" role="list">
-                    <!-- Gallery items loaded dynamically from Firestore -->
-                    <!-- Placeholders shown while loading -->
-                    <article class="gallery-item large gallery-placeholder-item" role="listitem">
-                        <div class="gallery-image"
-                            style="background: linear-gradient(135deg, var(--color-primary-light) 0%, var(--color-primary) 100%);">
-                            <div class="gallery-placeholder" aria-hidden="true">
-                                <svg viewBox="0 0 64 64" fill="none" stroke="white" stroke-width="1.5">
-                                    <rect x="8" y="12" width="48" height="40" rx="2" />
-                                    <line x1="32" y1="12" x2="32" y2="52" />
-                                    <line x1="8" y1="32" x2="56" y2="32" />
-                                </svg>
+
+                <!-- Windows Gallery -->
+                <div class="gallery-category" id="gallery-windows">
+                    <h3 class="gallery-category-title">
+                        <svg width="24" height="24" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="12" width="48" height="40" rx="2"/><line x1="32" y1="12" x2="32" y2="52"/><line x1="8" y1="32" x2="56" y2="32"/></svg>
+                        Window Installations
+                    </h3>
+                    <div class="gallery-grid" data-category="windows" role="list">
+                        <article class="gallery-item large gallery-placeholder-item" role="listitem">
+                            <div class="gallery-image" style="background: linear-gradient(135deg, var(--color-primary-light) 0%, var(--color-primary) 100%);">
+                                <div class="gallery-placeholder" aria-hidden="true">
+                                    <svg viewBox="0 0 64 64" fill="none" stroke="white" stroke-width="1.5"><rect x="8" y="12" width="48" height="40" rx="2"/><line x1="32" y1="12" x2="32" y2="52"/><line x1="8" y1="32" x2="56" y2="32"/></svg>
+                                </div>
                             </div>
-                        </div>
-                        <div class="gallery-overlay">
-                            <h4>Modern Bay Windows</h4>
-                            <p>Complete window replacement</p>
-                        </div>
-                    </article>
-                    <article class="gallery-item gallery-placeholder-item" role="listitem">
-                        <div class="gallery-image"
-                            style="background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);">
-                            <div class="gallery-placeholder" aria-hidden="true">
-                                <svg viewBox="0 0 64 64" fill="none" stroke="white" stroke-width="1.5">
-                                    <rect x="12" y="8" width="40" height="48" rx="2" />
-                                    <rect x="20" y="16" width="24" height="12" rx="1" />
-                                    <circle cx="44" cy="40" r="3" />
-                                </svg>
+                            <div class="gallery-overlay"><h4>Modern Bay Windows</h4><p>Complete window replacement</p></div>
+                        </article>
+                    </div>
+                </div>
+
+                <!-- Doors Gallery -->
+                <div class="gallery-category" id="gallery-doors">
+                    <h3 class="gallery-category-title">
+                        <svg width="24" height="24" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2"><rect x="12" y="8" width="40" height="48" rx="2"/><rect x="20" y="16" width="24" height="12" rx="1"/><circle cx="44" cy="40" r="3"/></svg>
+                        Door Installations
+                    </h3>
+                    <div class="gallery-grid" data-category="doors" role="list">
+                        <article class="gallery-item large gallery-placeholder-item" role="listitem">
+                            <div class="gallery-image" style="background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);">
+                                <div class="gallery-placeholder" aria-hidden="true">
+                                    <svg viewBox="0 0 64 64" fill="none" stroke="white" stroke-width="1.5"><rect x="12" y="8" width="40" height="48" rx="2"/><rect x="20" y="16" width="24" height="12" rx="1"/><circle cx="44" cy="40" r="3"/></svg>
+                                </div>
                             </div>
-                        </div>
-                        <div class="gallery-overlay">
-                            <h4>Entry Door</h4>
-                            <p>Custom fiberglass door</p>
-                        </div>
-                    </article>
-                    <article class="gallery-item gallery-placeholder-item" role="listitem">
-                        <div class="gallery-image"
-                            style="background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%);">
-                            <div class="gallery-placeholder" aria-hidden="true">
-                                <svg viewBox="0 0 64 64" fill="none" stroke="white" stroke-width="1.5">
-                                    <polygon points="32,4 56,28 56,56 8,56 8,28" />
-                                    <circle cx="32" cy="20" r="8" />
-                                </svg>
+                            <div class="gallery-overlay"><h4>Entry Door</h4><p>Custom fiberglass door</p></div>
+                        </article>
+                    </div>
+                </div>
+
+                <!-- Skylights Gallery -->
+                <div class="gallery-category" id="gallery-skylights">
+                    <h3 class="gallery-category-title">
+                        <svg width="24" height="24" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2"><polygon points="32,4 56,28 56,56 8,56 8,28"/><line x1="32" y1="4" x2="32" y2="40"/><line x1="8" y1="28" x2="56" y2="28"/></svg>
+                        Skylight Installations
+                    </h3>
+                    <div class="gallery-grid" data-category="skylights" role="list">
+                        <article class="gallery-item large gallery-placeholder-item" role="listitem">
+                            <div class="gallery-image" style="background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%);">
+                                <div class="gallery-placeholder" aria-hidden="true">
+                                    <svg viewBox="0 0 64 64" fill="none" stroke="white" stroke-width="1.5"><polygon points="32,4 56,28 56,56 8,56 8,28"/><circle cx="32" cy="20" r="8"/></svg>
+                                </div>
                             </div>
-                        </div>
-                        <div class="gallery-overlay">
-                            <h4>Vented Skylight</h4>
-                            <p>Kitchen installation</p>
-                        </div>
-                    </article>
+                            <div class="gallery-overlay"><h4>Vented Skylight</h4><p>Kitchen installation</p></div>
+                        </article>
+                    </div>
                 </div>
             </div>
         </section>
@@ -672,35 +679,32 @@
                         </div>
                     </div>
                     <div class="contact-form-wrapper">
-                        <form class="contact-form" id="contactForm"
-                            action="https://docs.google.com/forms/d/e/1FAIpQLScfXQY9VFB1m9gkn5-FxVxtOaCIkZz9bKPHgnP8vudyyYKfPg/formResponse"
-                            method="POST" target="hidden_iframe">
-                            <input type="hidden" name="entry.1981047512" id="messageWithSource">
+                        <form class="contact-form" id="contactForm">
                             <div class="form-group">
                                 <label for="name">Full Name *</label>
-                                <input type="text" id="name" name="entry.202503320" required placeholder="John Smith"
+                                <input type="text" id="name" required placeholder="John Smith"
                                     autocomplete="name">
                             </div>
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="email">Email *</label>
-                                    <input type="email" id="email" name="entry.978868908" required
+                                    <input type="email" id="email" required
                                         placeholder="john@example.com" autocomplete="email">
                                 </div>
                                 <div class="form-group">
                                     <label for="phone">Phone *</label>
-                                    <input type="tel" id="phone" name="entry.650176977" required
+                                    <input type="tel" id="phone" required
                                         placeholder="604-555-1234" autocomplete="tel">
                                 </div>
                             </div>
                             <div class="form-group">
                                 <label for="address">Address *</label>
-                                <input type="text" id="address" name="entry.246840981" required
-                                    placeholder="123 Main St, Vancouver, BC V6B 1A1" autocomplete="street-address">
+                                <input type="text" id="address" required
+                                    placeholder="Start typing your address..." autocomplete="off">
                             </div>
                             <div class="form-group">
                                 <label for="service">Service Interested In *</label>
-                                <select id="service" name="entry.1152671567" required>
+                                <select id="service" required>
                                     <option value="">Select a service...</option>
                                     <option value="Window Installation">Window Installation</option>
                                     <option value="Door Installation">Door Installation</option>
@@ -712,20 +716,32 @@
                             </div>
                             <div class="form-group">
                                 <label for="message">Tell us about your project</label>
-                                <textarea id="message" name="message_display" rows="4"
+                                <textarea id="message" rows="4"
                                     placeholder="Describe your project, timeline, and any specific requirements..."></textarea>
                             </div>
-                            <button type="submit" class="btn btn-primary btn-full">
-                                <span>Request Free Quote</span>
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            <div class="form-group">
+                                <label>Photos <span style="font-weight:400;color:var(--color-gray-500);font-size:13px;">(optional — up to 5)</span></label>
+                                <div id="photoDropZone" style="border:2px dashed var(--color-gray-300); border-radius:var(--radius-lg); padding:24px; text-align:center; cursor:pointer; transition:all 0.2s ease; background:var(--color-gray-50);">
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--color-gray-500)" stroke-width="1.5" style="margin-bottom:8px;">
+                                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                                    </svg>
+                                    <p style="margin:0;color:var(--color-gray-500);font-size:14px;">Drag photos here or <span style="color:var(--color-primary);font-weight:600;text-decoration:underline;">browse</span></p>
+                                    <p style="margin:4px 0 0;color:var(--color-gray-300);font-size:12px;">JPG, PNG, HEIC • Max 5MB each</p>
+                                    <input type="file" id="photoInput" accept="image/*" multiple style="display:none;">
+                                </div>
+                                <div id="photoPreview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;"></div>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-full" id="submitBtn">
+                                <span id="submitText">Request Free Quote</span>
+                                <svg id="submitIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="2" aria-hidden="true">
                                     <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
                                 </svg>
                             </button>
+                            <div id="formFeedback" style="display:none; margin-top:16px; padding:16px; border-radius:12px; text-align:center; font-weight:500;"></div>
                             <p class="form-note">By submitting, you agree to our privacy policy. We'll never share your
                                 information.</p>
                         </form>
-                        <iframe name="hidden_iframe" id="hidden_iframe" style="display:none;"></iframe>
                     </div>
                 </div>
             </div>
@@ -881,17 +897,26 @@
 
                 grid.querySelectorAll('.service-placeholder').forEach(el => el.remove());
 
+                // Map service titles to gallery section IDs
+                const GALLERY_MAP = {
+                    'window': '#gallery-windows',
+                    'door': '#gallery-doors',
+                    'skylight': '#gallery-skylights'
+                };
+
                 snap.forEach((doc, i) => {
                     const d = doc.data();
                     const article = document.createElement('article');
                     article.className = 'service-card' + (i === 1 ? ' featured' : '');
                     const iconSvg = SERVICE_ICONS[d.icon] || SERVICE_ICONS.home;
+                    const titleLower = (d.title || '').toLowerCase();
+                    const galleryLink = Object.entries(GALLERY_MAP).find(([k]) => titleLower.includes(k))?.[1] || '#gallery';
                     article.innerHTML = `
                         ${i === 1 ? '<div class="featured-badge">Most Popular</div>' : ''}
                         <div class="service-icon" aria-hidden="true">${iconSvg}</div>
                         <h3>${d.title}</h3>
                         <p>${d.description}</p>
-                        <a href="#contact" class="service-link">Learn More
+                        <a href="${galleryLink}" class="service-link">View Our Work
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                         </a>`;
                     grid.appendChild(article);
@@ -902,28 +927,48 @@
         }
 
         async function loadGallery() {
-            const grid = document.getElementById('galleryGrid');
-            if (!grid) return;
             try {
                 const q = query(collection(db, 'gallery'), where('visible', '==', true), orderBy('order', 'asc'));
                 const snap = await getDocs(q);
                 if (snap.empty) return;
 
-                grid.querySelectorAll('.gallery-placeholder-item').forEach(el => el.remove());
+                // Map categories to their grid containers
+                const CATEGORY_MAP = {
+                    'windows': 'windows', 'window': 'windows',
+                    'doors': 'doors', 'door': 'doors',
+                    'skylights': 'skylights', 'skylight': 'skylights'
+                };
 
-                snap.forEach((doc, i) => {
+                // Group photos by category
+                const grouped = { windows: [], doors: [], skylights: [], other: [] };
+                snap.forEach(doc => {
                     const d = doc.data();
-                    const article = document.createElement('article');
-                    article.className = 'gallery-item' + (i === 0 ? ' large' : '');
-                    article.setAttribute('role', 'listitem');
-                    article.innerHTML = `
-                        <div class="gallery-image" style="background-image:url('${d.imageUrl}');background-size:cover;background-position:center;"></div>
-                        <div class="gallery-overlay">
-                            <h4>${d.category || ''}</h4>
-                            <p>${d.description || ''}</p>
-                        </div>`;
-                    grid.appendChild(article);
+                    const cat = (d.category || '').toLowerCase().trim();
+                    const key = CATEGORY_MAP[cat] || 'other';
+                    grouped[key].push(d);
                 });
+
+                // Render each category
+                for (const [category, items] of Object.entries(grouped)) {
+                    if (items.length === 0 && category !== 'other') continue;
+                    const grid = document.querySelector(`.gallery-grid[data-category="${category}"]`);
+                    if (!grid) continue;
+
+                    grid.querySelectorAll('.gallery-placeholder-item').forEach(el => el.remove());
+
+                    items.forEach((d, i) => {
+                        const article = document.createElement('article');
+                        article.className = 'gallery-item' + (i === 0 ? ' large' : '');
+                        article.setAttribute('role', 'listitem');
+                        article.innerHTML = `
+                            <div class="gallery-image" style="background-image:url('${d.imageUrl}');background-size:cover;background-position:center;"></div>
+                            <div class="gallery-overlay">
+                                <h4>${d.title || d.category || ''}</h4>
+                                <p>${d.description || ''}</p>
+                            </div>`;
+                        grid.appendChild(article);
+                    });
+                }
             } catch (e) {
                 console.warn('Gallery load failed, keeping placeholders:', e);
             }
@@ -934,6 +979,145 @@
         loadGallery();
     </script>
     <script src="script.js"></script>
+
+    <!-- Contact Form Handler -->
+    <script>
+    // Photo upload handling
+    const photoFiles = [];
+    const MAX_PHOTOS = 5;
+    const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+    const dropZone = document.getElementById('photoDropZone');
+    const photoInput = document.getElementById('photoInput');
+    const photoPreview = document.getElementById('photoPreview');
+
+    dropZone.addEventListener('click', () => photoInput.click());
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.borderColor = 'var(--color-primary)'; dropZone.style.background = 'rgba(27,58,95,0.05)'; });
+    dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = ''; dropZone.style.background = ''; });
+    dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.style.borderColor = ''; dropZone.style.background = ''; handleFiles(e.dataTransfer.files); });
+    photoInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+    function handleFiles(files) {
+        for (const file of files) {
+            if (photoFiles.length >= MAX_PHOTOS) { alert('Maximum 5 photos allowed'); break; }
+            if (!file.type.startsWith('image/')) continue;
+            if (file.size > MAX_SIZE) { alert(file.name + ' is too large (max 5MB)'); continue; }
+            photoFiles.push(file);
+        }
+        renderPreviews();
+        photoInput.value = '';
+    }
+
+    function renderPreviews() {
+        photoPreview.innerHTML = '';
+        if (photoFiles.length >= MAX_PHOTOS) dropZone.style.display = 'none';
+        else dropZone.style.display = '';
+
+        photoFiles.forEach((file, i) => {
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'position:relative;width:72px;height:72px;border-radius:8px;overflow:hidden;border:1px solid var(--color-gray-200);';
+            const img = document.createElement('img');
+            img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+            img.src = URL.createObjectURL(file);
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.style.cssText = 'position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,0.6);color:white;border:none;cursor:pointer;font-size:12px;line-height:20px;text-align:center;padding:0;';
+            removeBtn.textContent = '×';
+            removeBtn.onclick = () => { photoFiles.splice(i, 1); renderPreviews(); };
+            wrap.appendChild(img);
+            wrap.appendChild(removeBtn);
+            photoPreview.appendChild(wrap);
+        });
+    }
+
+    function fileToBase64(file) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve({ name: file.name, type: file.type, data: reader.result.split(',')[1] });
+            reader.readAsDataURL(file);
+        });
+    }
+
+    document.getElementById('contactForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('submitBtn');
+        const text = document.getElementById('submitText');
+        const icon = document.getElementById('submitIcon');
+        const feedback = document.getElementById('formFeedback');
+
+        btn.disabled = true;
+        text.textContent = photoFiles.length ? 'Uploading photos...' : 'Sending...';
+        icon.style.display = 'none';
+        feedback.style.display = 'none';
+
+        try {
+            const photos = await Promise.all(photoFiles.map(fileToBase64));
+
+            text.textContent = 'Sending...';
+            const res = await fetch('/api/contact', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: document.getElementById('name').value.trim(),
+                    email: document.getElementById('email').value.trim(),
+                    phone: document.getElementById('phone').value.trim(),
+                    address: document.getElementById('address').value.trim(),
+                    service: document.getElementById('service').value,
+                    message: document.getElementById('message').value.trim(),
+                    photos
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                feedback.style.display = 'block';
+                feedback.style.background = '#ecfdf5';
+                feedback.style.color = '#065f46';
+                feedback.style.border = '1px solid #a7f3d0';
+                feedback.innerHTML = '✅ <strong>Thank you!</strong> We\'ll be in touch within 24 hours.';
+                this.reset();
+                photoFiles.length = 0;
+                renderPreviews();
+            } else {
+                throw new Error(data.error || 'Something went wrong');
+            }
+        } catch (err) {
+            feedback.style.display = 'block';
+            feedback.style.background = '#fef2f2';
+            feedback.style.color = '#991b1b';
+            feedback.style.border = '1px solid #fecaca';
+            feedback.innerHTML = '❌ ' + (err.message || 'Failed to send. Please call us at 604-904-6580.');
+        } finally {
+            btn.disabled = false;
+            text.textContent = 'Request Free Quote';
+            icon.style.display = '';
+        }
+    });
+    </script>
+
+    <!-- Google Places Autocomplete for address field -->
+    <script>
+    (g=>{var h,a,k,p="The Google Maps JavaScript API",c="google",l="importLibrary",q="__ib__",m=document,b=window;b=b[c]||(b[c]={});var d=b.maps||(b.maps={}),r=new Set,e=new URLSearchParams,u=()=>h||(h=new Promise(async(f,n)=>{await (a=m.createElement("script"));e.set("libraries",[...r]);for(k in g)e.set(k.replace(/[A-Z]/g,t=>"_"+t[0].toLowerCase()),g[k]);e.set("callback",c+".maps."+q);a.src=`https://maps.googleapis.com/maps/api/js?`+e;d[q]=f;a.onerror=()=>h=n(Error(p+" could not load."));a.nonce=m.querySelector("script[nonce]")?.nonce||"";m.head.append(a)}));d[l]?console.warn(p+" only loads once. Ignoring:",g):d[l]=(f,...n)=>r.add(f)&&u().then(()=>d[l](f,...n))})({
+        key: "AIzaSyAZsRsk7Q93iEEGv1ONRiIOLuTWWFMDjcU",
+        v: "weekly"
+    });
+
+    async function initAutocomplete() {
+        const { Autocomplete } = await google.maps.importLibrary("places");
+        const input = document.getElementById("address");
+        if (!input) return;
+        const autocomplete = new Autocomplete(input, {
+            componentRestrictions: { country: "ca" },
+            fields: ["formatted_address", "geometry"],
+            types: ["address"]
+        });
+        autocomplete.addListener("place_changed", () => {
+            const place = autocomplete.getPlace();
+            if (place.formatted_address) {
+                input.value = place.formatted_address;
+            }
+        });
+    }
+    initAutocomplete();
+    </script>
 </body>
 
 </html>

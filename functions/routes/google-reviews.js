@@ -9,25 +9,23 @@ const PLACES_API_URL = `https://places.googleapis.com/v1/places/${PLACE_ID}`;
 /**
  * GET /api/google-reviews/sync
  * Fetches reviews from Google Places API and syncs them into Firestore.
- * Requires admin auth. Uses Application Default Credentials (service account).
+ * Requires admin auth. Uses API key from GOOGLE_PLACES_API_KEY env var.
  */
 router.get('/sync', requireAuth, async (req, res) => {
     try {
-        const { GoogleAuth } = require('google-auth-library');
-        const auth = new GoogleAuth({
-            scopes: ['https://www.googleapis.com/auth/cloud-platform']
-        });
-        const client = await auth.getClient();
-        const tokenResponse = await client.getAccessToken();
-        const accessToken = tokenResponse.token;
+        const apiKey = (process.env.GOOGLE_PLACES_API_KEY || '').trim();
+        if (!apiKey) {
+            return res.status(500).json({
+                error: 'GOOGLE_PLACES_API_KEY environment variable is not set'
+            });
+        }
 
-        // Fetch reviews from Places API (New)
+        // Fetch reviews from Places API (New) using API key
         const response = await fetch(PLACES_API_URL, {
             method: 'GET',
             headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'X-Goog-FieldMask': 'reviews',
-                'x-goog-user-project': 'western-windows-ca'
+                'X-Goog-Api-Key': apiKey,
+                'X-Goog-FieldMask': 'reviews'
             }
         });
 
