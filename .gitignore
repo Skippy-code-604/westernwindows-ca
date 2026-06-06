@@ -5,3 +5,9 @@ firebase-debug.log
 node_modules/
 functions/node_modules/
 functions/.env
+
+# Sweep payloads + reference data — sensitive operational data (invoice/payable
+# amounts, SD44 + AP details). Structured ticket inputs, NOT raw email, but must
+# never enter git history. See CRM guardrail #2.
+SWEEP_*.json
+*.xlsx
