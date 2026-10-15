@@ -1,11 +1,11 @@
 // ---- Firebase Auth for WW Portal ----
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
+import { initializeApp, getApps, getApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
 
 // Load config from Firebase Hosting's reserved URL (not hardcoded in source)
 const firebaseConfig = await fetch('/__/firebase/init.json').then(r => r.json());
 
-const app = initializeApp(firebaseConfig);
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 
