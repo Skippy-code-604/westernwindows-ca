@@ -1,0 +1,20 @@
+{
+    "name": "ww-portal-functions",
+    "version": "1.0.0",
+    "description": "Western Windows Portal - Cloud Functions",
+    "main": "index.js",
+    "engines": {
+        "node": "22"
+    },
+    "dependencies": {
+        "@googleapis/drive": "^20.1.0",
+        "cors": "^2.8.6",
+        "dotenv": "^17.3.1",
+        "express": "^4.21.0",
+        "firebase-admin": "^13.4.0",
+        "firebase-functions": "^7.1.1",
+        "jspdf": "^4.2.0",
+        "jspdf-autotable": "^5.0.7",
+        "nodemailer": "^8.0.2"
+    }
+}

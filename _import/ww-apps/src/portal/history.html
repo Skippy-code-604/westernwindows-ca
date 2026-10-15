@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Western Windows Portal — History</title>
+    <link rel="stylesheet" href="/portal/css/styles.css?v=2">
+</head>
+
+<body>
+    <div class="app-container">
+        <nav class="navbar">
+            <a href="/portal/dashboard.html" class="navbar-brand">
+                <img src="/portal/ww-logo.png" alt="Western Windows" class="navbar-logo">
+                <div class="navbar-title">WESTERN WINDOWS <span>Portal</span></div>
+            </a>
+            <div class="navbar-actions">
+                <button class="btn btn-ghost btn-sm" id="logout-btn">Logout</button>
+            </div>
+        </nav>
+
+        <div class="page-content">
+            <a href="/portal/dashboard.html" class="back-link">← Back to Dashboard</a>
+
+            <div class="page-header">
+                <h1 class="page-title">Document History</h1>
+                <p class="page-subtitle">Search and manage your RFQs and Purchase Orders</p>
+            </div>
+
+            <!-- Search Filters -->
+            <div class="card mb-2">
+                <h3 class="section-header">Search & Filter</h3>
+                <div class="form-row form-row-4">
+                    <div class="form-group">
+                        <label class="form-label">Search</label>
+                        <input type="text" class="form-input" id="search-input"
+                            placeholder="Doc #, project, address...">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Type</label>
+                        <select class="form-select" id="filter-type">
+                            <option value="">All Types</option>
+                            <option value="RFQ">RFQ</option>
+                            <option value="PO">PO</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Supplier</label>
+                        <select class="form-select" id="filter-supplier">
+                            <option value="">All Suppliers</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Status</label>
+                        <select class="form-select" id="filter-status">
+                            <option value="">All Statuses</option>
+                            <option value="Draft">Draft</option>
+                            <option value="Sent">Sent</option>
+                            <option value="Quoted">Quoted</option>
+                            <option value="Ordered">Ordered</option>
+                            <option value="Delivered">Delivered</option>
+                            <option value="Confirmed">Confirmed</option>
+                            <option value="Cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row form-row-3">
+                    <div class="form-group">
+                        <label class="form-label">Date From</label>
+                        <input type="date" class="form-input" id="filter-date-from">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Date To</label>
+                        <input type="date" class="form-input" id="filter-date-to">
+                    </div>
+                    <div class="form-group" style="display:flex; align-items:flex-end;">
+                        <button class="btn btn-primary w-full" id="search-btn">🔍 Search</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Table -->
+            <div class="card">
+                <div class="table-container" id="results-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Type</th>
+                                <th>Doc #</th>
+                                <th>Date</th>
+                                <th>Supplier</th>
+                                <th>Project</th>
+                                <th>Status</th>
+                                <th>Total</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-body">
+                            <tr>
+                                <td colspan="8" class="text-center text-muted" style="padding:32px;">
+                                    Use the filters above to search, or results will load automatically.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Order Confirmation Modal -->
+    <div class="modal-overlay hidden" id="confirmation-modal">
+        <div class="modal">
+            <h3 class="modal-title">📋 Order Confirmation</h3>
+            <p class="text-sm text-muted mb-2" id="confirmation-doc-number"></p>
+            <div class="form-group">
+                <label class="form-label">Confirmation Details</label>
+                <textarea class="form-textarea" id="confirmation-text" rows="6"
+                    placeholder="Paste or type order confirmation details here..."></textarea>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-outline" id="cancel-confirmation-btn">Cancel</button>
+                <button class="btn btn-primary" id="save-confirmation-btn">Save Confirmation</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+    <script type="module" src="/portal/js/firebase-auth.js"></script>
+    <script src="/portal/js/utils.js?v=2"></script>
+    <script src="/portal/js/history.js?v=2"></script>
+</body>
+
+</html>

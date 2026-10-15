@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Western Windows Portal — Projects</title>
+    <link rel="stylesheet" href="/portal/css/styles.css?v=3">
+</head>
+
+<body>
+    <div class="app-container">
+        <nav class="navbar">
+            <a href="/portal/dashboard.html" class="navbar-brand">
+                <img src="/portal/ww-logo.png" alt="Western Windows" class="navbar-logo">
+                <div class="navbar-title">WESTERN WINDOWS <span>Portal</span></div>
+            </a>
+            <div class="navbar-actions">
+                <button class="btn btn-ghost btn-sm" id="logout-btn">Logout</button>
+            </div>
+        </nav>
+
+        <div class="page-content">
+            <a href="/portal/dashboard.html" class="back-link">← Back to Dashboard</a>
+
+            <div class="page-header flex-between">
+                <div>
+                    <h1 class="page-title">Projects</h1>
+                    <p class="page-subtitle">Track all RFQs and POs grouped by job / project name</p>
+                </div>
+                <div>
+                    <input type="text" class="form-input" id="project-search" placeholder="🔍 Search projects..." style="width: 260px;">
+                </div>
+            </div>
+
+            <!-- Project List -->
+            <div id="projects-container">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📁</div>
+                    <p class="empty-state-text">Loading projects...</p>
+                </div>
+            </div>
+
+            <!-- Project Detail (shown when clicking a project) -->
+            <div id="project-detail" style="display:none;">
+                <div class="flex-between mb-2">
+                    <div>
+                        <h2 class="section-header" id="project-detail-title" style="margin-bottom:4px; border:none; padding:0;"></h2>
+                        <p class="text-muted" id="project-detail-subtitle"></p>
+                    </div>
+                    <button class="btn btn-outline btn-sm" id="back-to-projects">← All Projects</button>
+                </div>
+                <div id="project-docs-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+    <script type="module" src="/portal/js/firebase-auth.js"></script>
+    <script src="/portal/js/utils.js?v=2"></script>
+    <script src="/portal/js/projects.js?v=1"></script>
+</body>
+
+</html>

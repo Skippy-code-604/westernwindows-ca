@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Western Windows Portal — Dashboard</title>
+    <link rel="stylesheet" href="/portal/css/styles.css?v=2">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Navbar -->
+        <nav class="navbar">
+            <a href="/portal/dashboard.html" class="navbar-brand">
+                <img src="/portal/ww-logo.png" alt="Western Windows" class="navbar-logo">
+                <div class="navbar-title">WESTERN WINDOWS <span>Portal</span></div>
+            </a>
+            <div class="navbar-actions">
+                <span class="navbar-user">👤 Logged in</span>
+                <button class="btn btn-ghost btn-sm" id="logout-btn">Logout</button>
+            </div>
+        </nav>
+
+        <!-- Page Content -->
+        <div class="page-content">
+            <div class="page-header">
+                <h1 class="page-title">Dashboard</h1>
+                <p class="page-subtitle">Create and manage your RFQs and Purchase Orders</p>
+            </div>
+
+            <!-- Quick Stats -->
+            <div class="stats-grid" id="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-drafts">—</div>
+                    <div class="stat-label">Drafts Pending</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-rfqs-sent">—</div>
+                    <div class="stat-label">RFQs Sent</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-pos-month">—</div>
+                    <div class="stat-label">POs This Month</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-total-value">—</div>
+                    <div class="stat-label">PO Value (Month)</div>
+                </div>
+            </div>
+
+            <!-- Pipeline Visualization -->
+            <div class="mt-3">
+                <h2 class="section-header">Document Pipeline</h2>
+                <div class="pipeline-grid" id="pipeline-grid">
+                    <div class="pipeline-stage pipeline-draft">
+                        <div class="pipeline-stage-count" id="pipe-draft">—</div>
+                        <div class="pipeline-stage-label">Draft</div>
+                    </div>
+                    <div class="pipeline-stage pipeline-sent">
+                        <div class="pipeline-stage-count" id="pipe-sent">—</div>
+                        <div class="pipeline-stage-label">Sent</div>
+                    </div>
+                    <div class="pipeline-stage pipeline-quoted">
+                        <div class="pipeline-stage-count" id="pipe-quoted">—</div>
+                        <div class="pipeline-stage-label">Quoted</div>
+                    </div>
+                    <div class="pipeline-stage pipeline-ordered">
+                        <div class="pipeline-stage-count" id="pipe-ordered">—</div>
+                        <div class="pipeline-stage-label">Ordered</div>
+                    </div>
+                    <div class="pipeline-stage pipeline-delivered">
+                        <div class="pipeline-stage-count" id="pipe-delivered">—</div>
+                        <div class="pipeline-stage-label">Delivered</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Cards -->
+            <div class="action-grid">
+                <div class="card card-clickable action-card" id="new-rfq-card">
+                    <div class="card-icon">📋</div>
+                    <div class="card-title">New RFQ</div>
+                    <div class="card-subtitle">Request a quote from a supplier</div>
+                </div>
+                <div class="card card-clickable action-card" id="new-po-card">
+                    <div class="card-icon">📦</div>
+                    <div class="card-title">New Purchase Order</div>
+                    <div class="card-subtitle">Place an order with a supplier</div>
+                </div>
+                <div class="card card-clickable action-card" id="history-card">
+                    <div class="card-icon">🔍</div>
+                    <div class="card-title">Search History</div>
+                    <div class="card-subtitle">View and manage past documents</div>
+                </div>
+                <div class="card card-clickable action-card" id="projects-card">
+                    <div class="card-icon">📁</div>
+                    <div class="card-title">Projects</div>
+                    <div class="card-subtitle">Track all docs by job name</div>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="mt-3">
+                <h2 class="section-header">Recent Activity</h2>
+                <div id="recent-activity">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📄</div>
+                        <p class="empty-state-text">No documents yet. Create your first RFQ or PO!</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+    <script type="module" src="/portal/js/firebase-auth.js"></script>
+    <script src="/portal/js/utils.js?v=2"></script>
+    <script src="/portal/js/dashboard.js?v=2"></script>
+</body>
+
+</html>
