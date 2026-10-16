@@ -19,12 +19,16 @@ const ALLOWED_ORIGINS = [
     'https://westernwindows.ca',
     'https://www.westernwindows.ca',
 ];
+// Firebase Hosting preview channels of THIS site (firebase hosting:channel:deploy). Only the
+// western-windows-ca site can create western-windows-ca--<channel>.web.app, so this can't admit outsiders.
+// Without it, a preview build loads fine but every POST/PUT from it is refused ("CORS blocked").
+const PREVIEW_CHANNEL = /^https:\/\/western-windows-ca--[a-z0-9-]+\.web\.app$/;
 if (process.env.LOCAL_DEV === 'true') {
     ALLOWED_ORIGINS.push('http://localhost:3000');
 }
 app.use(cors({
     origin: (origin, callback) => {
-        if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+        if (!origin || ALLOWED_ORIGINS.includes(origin) || PREVIEW_CHANNEL.test(origin)) {
             callback(null, true);
         } else {
             callback(new Error('CORS blocked'));
