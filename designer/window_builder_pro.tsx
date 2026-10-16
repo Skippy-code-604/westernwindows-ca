@@ -108,6 +108,7 @@ interface Unit {
   overallHeight: number;
   tree: TreeNode;
   glazingSpec: GlazingSpec;
+  roAllowance?: number;   // inches, TOTAL added to unit size for the rough opening (half per side). Default DEFAULT_RO_ALLOWANCE.
 }
 
 interface Project {
@@ -124,6 +125,7 @@ interface EditorState {
   overallWidth: number;
   overallHeight: number;
   projectMode: ProjectMode;
+  roAllowance: number;
 }
 
 // ─────────────────────────────────────────────
@@ -143,10 +145,25 @@ function toFraction(dec: number): string {
   return `${whole > 0 ? whole + '-' : ''}${sixteenths / d}/${16 / d}"`;
 }
 
+// Inverse of toFraction: accepts 14, 14.5, 14 1/2, 14-1/2, 1/2 (optionally with ") → inches; NaN if unreadable.
+function parseInches(s: string): number {
+  const t = s.trim().replace(/["”″]/g, '');
+  let m = t.match(/^\d+(?:\.\d+)?$/);
+  if (m) return parseFloat(t);
+  m = t.match(/^(?:(\d+)[\s-]+)?(\d+)\/(\d+)$/);
+  if (m && Number(m[3]) !== 0) return (m[1] ? Number(m[1]) : 0) + Number(m[2]) / Number(m[3]);
+  return NaN;
+}
+
 const FRAME_THICKNESS = 3.25;
 const MULLION_THICKNESS = 2.0;
 const SASH_PROFILE = 1.5;
-const SNAP_POINTS = [1 / 3, 1 / 2, 2 / 3];
+// Rough opening = unit size + allowance, as a TOTAL (half each side). Industry practice: ½" total is the minimum
+// for single vinyl units (Pella), ¾" is common BC practice and Pella's figure for mulled units, 1" for wood-clad /
+// clip installs. Retrofit inserts go the other way: smallest opening measurement − ¼".
+const DEFAULT_RO_ALLOWANCE = 0.75;
+const RO_ALLOWANCE_OPTIONS = [0.5, 0.75, 1];
+const SNAP_POINTS = [1 / 4, 1 / 3, 1 / 2, 2 / 3, 3 / 4];
 const SNAP_ZONE = 0.03;
 
 const WINDOW_PANE_TYPES: { value: WindowPaneType; label: string; group: string }[] = [
@@ -886,6 +903,20 @@ function findNode(node: TreeNode, id: string): TreeNode | null {
 // Reads the pane tree left-to-right and builds the unit label string.
 // fixed panes → 'O', any operable pane → 'X'
 // Example: XO, OXO, XOX, etc.
+// Size in inches of the region a node occupies. Mirrors renderUnitSVGString: a split's ratio applies to the space
+// left after the mullion, V puts children[0] on the left, H puts children[0] on top.
+function nodeBounds(node: TreeNode, id: string, w: number, h: number): { w: number; h: number } | null {
+  if (node.id === id) return { w, h };
+  if (node.type !== 'split') return null;
+  const [a, b] = node.children;
+  if (node.direction === 'V') {
+    const aw = (w - MULLION_THICKNESS) * node.ratio;
+    return nodeBounds(a, id, aw, h) ?? nodeBounds(b, id, w - MULLION_THICKNESS - aw, h);
+  }
+  const ah = (h - MULLION_THICKNESS) * node.ratio;
+  return nodeBounds(a, id, w, ah) ?? nodeBounds(b, id, w, h - MULLION_THICKNESS - ah);
+}
+
 function deriveXOString(node: TreeNode): string {
   if (node.type === 'pane') return (node as PaneNode).paneType === 'fixed' ? 'O' : 'X';
   // SplitNode: left child first (V = left/right, H = top/bottom)
@@ -1533,6 +1564,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
     overallWidth: unit.overallWidth,
     overallHeight: unit.overallHeight,
     projectMode: unit.projectMode,
+    roAllowance: unit.roAllowance ?? DEFAULT_RO_ALLOWANCE,
   });
   const [history, setHistory] = useState<EditorState[]>([editorState]);
   const [historyIdx, setHistoryIdx] = useState(0);
@@ -1554,11 +1586,11 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
   const [dimHInput, setDimHInput] = useState('');
   const svgRef = useRef<SVGSVGElement>(null);
 
-  const { tree, overallWidth, overallHeight, projectMode } = editorState;
+  const { tree, overallWidth, overallHeight, projectMode, roAllowance } = editorState;
 
   // Sync back to project whenever state changes
   useEffect(() => {
-    onSave({ tree, overallWidth, overallHeight, projectMode, glazingSpec });
+    onSave({ tree, overallWidth, overallHeight, projectMode, glazingSpec, roAllowance });
   }, [editorState, glazingSpec]);
 
   const pushState = useCallback((next: EditorState) => {
@@ -1680,6 +1712,40 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
     }
     pushState({ ...editorState, tree: newTree });
     setSelectedId('root');
+  };
+
+  // ─── DIVIDE ──────────────────────────────────────────────────────────────
+  // Mullions first, define each section after: every new section starts as fixed glass (carrying the selected
+  // pane's glass settings); click a section and set its type. Works on the selected pane, or the whole unit.
+  const replaceSelectedPane = (build: (base: Omit<PaneNode, 'id'>) => SplitNode, selectFirst: (s: SplitNode) => string) => {
+    const target = selectedNode?.type === 'pane' ? selectedNode as PaneNode : (tree.type === 'pane' ? tree as PaneNode : null);
+    if (!target) return;
+    const base: Omit<PaneNode, 'id'> = { type: 'pane', paneType: 'fixed', glassType: target.glassType, glassThickness: target.glassThickness, edgeFinish: target.edgeFinish, cutouts: [] };
+    const sub = build(base);
+    const newTree = target.id === tree.id ? { ...sub, id: tree.id } : updateNode(tree, target.id, () => ({ ...sub, id: target.id }));
+    pushState({ ...editorState, tree: newTree });
+    setSelectedId(selectFirst(sub));
+  };
+
+  // count equal sections side by side (V) or stacked (H): nested splits at 1/n, 1/(n-1), … 1/2
+  const handleDivide = (dir: 'V' | 'H', count: number) => {
+    replaceSelectedPane(base => {
+      const build = (n: number): TreeNode => n === 1
+        ? { ...base, id: uuid() } as PaneNode
+        : { id: uuid(), type: 'split', direction: dir, ratio: 1 / n, children: [{ ...base, id: uuid() } as PaneNode, build(n - 1)] } as SplitNode;
+      return build(count) as SplitNode;
+    }, s => s.children[0].id);
+  };
+
+  // A section across the top or bottom taking `fraction` of the height (e.g. awning under a picture, transom).
+  const handleAddSection = (where: 'top' | 'bottom', fraction: number) => {
+    replaceSelectedPane(base => {
+      const section = { ...base, id: uuid() } as PaneNode;
+      const rest = { ...base, id: uuid() } as PaneNode;
+      return where === 'top'
+        ? { id: uuid(), type: 'split', direction: 'H', ratio: fraction, children: [section, rest] } as SplitNode
+        : { id: uuid(), type: 'split', direction: 'H', ratio: 1 - fraction, children: [rest, section] } as SplitNode;
+    }, s => (where === 'top' ? s.children[0] : s.children[1]).id);
   };
 
   const handleDelete = () => {
@@ -2011,7 +2077,9 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
 
     if (node.type === 'split') {
       const isV = node.direction === 'V';
-      const mullPx = MULLION_THICKNESS;
+      // Mullion in pixels. Was MULLION_THICKNESS unscaled (2px ≈ 0.2" at 10px/in), which overstated every section's
+      // size by ~1.8" whenever a mullion existed and disagreed with renderUnitSVGString (the quote), which scales it.
+      const mullPx = MULLION_THICKNESS * scale;
       let w1: number, h1: number, w2: number, h2: number, x2: number, y2: number;
       if (isV) { const avW = w - mullPx; w1 = avW * node.ratio; h1 = h; w2 = avW * (1 - node.ratio); h2 = h; x2 = x + w1 + mullPx; y2 = y; }
       else { const avH = h - mullPx; w1 = w; h1 = avH * node.ratio; w2 = w; h2 = avH * (1 - node.ratio); x2 = x; y2 = y + h1 + mullPx; }
@@ -2161,9 +2229,23 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
                 </div>
               </div>
               {projectMode === 'window' && (
-                <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700 flex justify-between">
-                  <span className="font-semibold">R.O.</span>
-                  <span>{toFraction(overallWidth + 2)} × {toFraction(overallHeight + 2)}</span>
+                <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700 space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="font-semibold">R.O.</span>
+                    <span>{toFraction(overallWidth + roAllowance)} × {toFraction(overallHeight + roAllowance)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-amber-600" title="Total, split evenly: ¾&quot; total = ⅜&quot; each side. ½&quot; total is the minimum for single vinyl units; ¾&quot; is common BC practice and the norm for mulled units.">
+                      Allowance (total)
+                    </span>
+                    <select value={roAllowance}
+                      onChange={e => pushState({ ...editorState, roAllowance: Number(e.target.value) })}
+                      className="p-0.5 border border-amber-300 rounded bg-white text-[11px] text-amber-800">
+                      {RO_ALLOWANCE_OPTIONS.map(a => (
+                        <option key={a} value={a}>{toFraction(a)} ({toFraction(a / 2)}/side)</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               )}
             </div>
@@ -2191,6 +2273,39 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
                       </button>
                     </div>
                   </div>
+
+                  {projectMode === 'window' && (
+                    <div className="p-2.5 bg-neutral-50 rounded-lg border border-neutral-200 space-y-2">
+                      <div>
+                        <label className="block text-xs font-semibold text-neutral-600">Divide</label>
+                        <p className="text-[10px] text-neutral-400">Adds mullions; new sections start fixed — click one to set its type</p>
+                      </div>
+                      {([['V', 'Columns', [2, 3, 4]], ['H', 'Rows', [2, 3]]] as const).map(([dir, label, counts]) => (
+                        <div key={dir} className="flex items-center gap-1.5">
+                          <span className="w-14 text-[10px] text-neutral-500">{label}</span>
+                          {counts.map(n => (
+                            <button key={n} onClick={() => handleDivide(dir, n)}
+                              title={`${n} equal ${dir === 'V' ? 'side-by-side' : 'stacked'} sections`}
+                              className="flex-1 py-1 rounded border text-[11px] font-semibold bg-white border-neutral-300 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-colors">
+                              {n === 2 ? '½' : n === 3 ? '⅓' : '¼'}
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                      {(['top', 'bottom'] as const).map(where => (
+                        <div key={where} className="flex items-center gap-1.5">
+                          <span className="w-14 text-[10px] text-neutral-500">{where === 'top' ? 'Top' : 'Bottom'}</span>
+                          {[1 / 4, 1 / 3, 1 / 2].map(f => (
+                            <button key={f} onClick={() => handleAddSection(where, f)}
+                              title={where === 'bottom' ? `Section across the bottom, ${Math.round(f * 100)}% of the height (e.g. awning under a picture)` : `Section across the top, ${Math.round(f * 100)}% of the height (e.g. transom)`}
+                              className="flex-1 py-1 rounded border text-[11px] font-semibold bg-white border-neutral-300 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-colors">
+                              {f === 1 / 4 ? '¼' : f === 1 / 3 ? '⅓' : '½'}
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {projectMode === 'window' && (
                     <div className="p-2.5 bg-blue-50 rounded-lg border border-blue-200">
@@ -2452,8 +2567,39 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
                         {Math.round((selectedNode as SplitNode).ratio * 100)}%
                       </span>
                     </div>
-                    <p className="text-[10px] text-neutral-400 mt-1">Snaps at ⅓, ½, ⅔</p>
+                    <p className="text-[10px] text-neutral-400 mt-1">Snaps at ¼, ⅓, ½, ⅔, ¾</p>
                   </div>
+                  {(() => {
+                    // Type the first section's size in inches (left section for a vertical mullion, top for horizontal).
+                    const s = selectedNode as SplitNode;
+                    // Same basis as the canvas and BOM: inside the frame (window mode) or the full lite (glass mode).
+                    const frame = projectMode === 'glass' ? 0 : FRAME_THICKNESS * 2;
+                    const b = nodeBounds(tree, selectedId, overallWidth - frame, overallHeight - frame);
+                    if (!b) return null;
+                    const span = (s.direction === 'V' ? b.w : b.h) - MULLION_THICKNESS;   // glass space the ratio divides
+                    const first = span * s.ratio;
+                    const apply = (raw: string) => {
+                      const v = parseInches(raw);
+                      if (!Number.isFinite(v) || span <= 0) return;
+                      const ratio = Math.min(0.95, Math.max(0.05, v / span));
+                      pushState({ ...editorState, tree: updateNode(tree, selectedId, n => ({ ...n, ratio })) });
+                    };
+                    return (
+                      <div>
+                        <label className="block text-xs font-semibold mb-1 text-neutral-600">
+                          {s.direction === 'V' ? 'Left section width' : 'Top section height'}
+                        </label>
+                        <input key={`${selectedId}-${s.ratio}`} defaultValue={toFraction(first).replace('"', '')}
+                          onBlur={e => apply(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') apply((e.target as HTMLInputElement).value); }}
+                          placeholder='e.g. 16 or 15-1/2'
+                          className="w-full p-2 border border-neutral-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                        <p className="text-[10px] text-neutral-400 mt-1">
+                          {s.direction === 'V' ? 'Right' : 'Bottom'}: {toFraction(span - first)} · plus {toFraction(MULLION_THICKNESS)} mullion · Enter to apply
+                        </p>
+                      </div>
+                    );
+                  })()}
                   <button onClick={handleDelete}
                     className="w-full flex items-center justify-center gap-1.5 text-red-600 border border-red-200 bg-red-50 py-1.5 rounded hover:bg-red-100 transition-colors text-xs font-semibold">
                     <Trash2 className="w-3.5 h-3.5" /> Remove Mullion
