@@ -5,7 +5,7 @@ service firebase.storage {
     // Mirrors ADMIN_EMAILS in app/src/lib/auth-context.tsx
     function isAdmin() {
       return request.auth != null &&
-             request.auth.token.email in ['shane@nsccr.ca', 'chris@nsccr.ca'];
+             request.auth.token.email in ['shane@nsccr.ca'];
     }
 
     // ============================================================

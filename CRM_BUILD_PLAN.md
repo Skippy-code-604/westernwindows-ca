@@ -53,7 +53,7 @@ Do NOT build Gmail/outbound or the email ingest yet — those are later phases.
 | Next.js | 15.5.9 | 16.1.3 |
 | Firebase project | `nsccr-web-site` | `western-windows-ca` |
 | Deploy | App Hosting (SSR) | static export → **migrating to App Hosting** |
-| Admin allowlist (`auth-context.tsx`) | `['shane@nsccr.ca']` | `['shane@nsccr.ca','chris@nsccr.ca']` |
+| Admin allowlist (`auth-context.tsx`) | `['shane@nsccr.ca']` | `['shane@nsccr.ca']` (Chris removed 2026-10-16) |
 | Existing backend | `functions/` (`api`) | `functions/` (`api`: project list/detail, supplier price history) + `documents` collection & indexes |
 | CRM business | White Spot / OneDesk + coordinators | Impak / SD44 work orders |
 
@@ -188,7 +188,7 @@ Likely composite indexes on `tickets`: `(status ASC, dueDate ASC)`, `(business A
 
 - Confirm invoicing runs through QuickBooks (Phase 6 link ticket→invoice #).
 - Confirm Glenn's full name vs the "Glenn Leonard" technician on the Argyle WO (model Glenn as `approver`, distinct person likely).
-- WW: confirm `chris@nsccr.ca` should be a full read+write admin (added to rules to match the app allowlist — revert if he should be read-only).
+- ~~WW: confirm `chris@nsccr.ca` should be a full read+write admin~~ — resolved 2026-10-16: Chris left; removed from allowlist, rules, contact form, Firebase Auth and IAM.
 - Decide whether `command.nsccr.ca` should front the NSCCR CRM (hosting rewrite; route unchanged).
 
 ---

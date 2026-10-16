@@ -16,9 +16,9 @@ Next.js + Firebase app for **Western Windows** (windows/glazing contractor). We 
 - Rules: `firestore.rules` + `storage.rules` (wired in `firebase.json`). Deploy with `firebase deploy --only firestore:rules,storage`.
 
 ## Auth (already enforced — reuse, don't rebuild)
-- `app/src/lib/auth-context.tsx`: Google popup login, allowlist `ADMIN_EMAILS = ['shane@nsccr.ca','chris@nsccr.ca']`, with `settings/adminWhitelist` Firestore fallback.
+- `app/src/lib/auth-context.tsx`: Google popup login, allowlist `ADMIN_EMAILS = ['shane@nsccr.ca']`, with `settings/adminWhitelist` Firestore fallback.
 - `app/src/app/admin/layout.tsx` gates every `/admin/*` route. Anything under `/admin` inherits this gate for free.
-- NOTE: `firestore.rules`/`storage.rules` `isAdmin()` now includes `chris@nsccr.ca` to match the app allowlist — confirm Chris should be full read+write.
+- Admin = shane@nsccr.ca only, in the app allowlist AND `firestore.rules`/`storage.rules` `isAdmin()` (keep all three in sync). Chris (chris@nsccr.ca / chris@westernwindows.ca) left Western Windows; removed everywhere 2026-10-16.
 
 ## The pattern to copy for new features
 `app/src/lib/services/<thing>-service.ts` (Firestore CRUD) → `app/src/app/admin/<thing>/page.tsx` (`'use client'` page) → add a nav item in `app/src/app/admin/layout.tsx`.

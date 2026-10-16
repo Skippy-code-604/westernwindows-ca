@@ -78,7 +78,7 @@ router.post('/', async (req, res) => {
 
         const mailOpts = {
             from: `"Western Windows Website" <${fromEmail}>`,
-            to: 'shane@westernwindows.ca, chris@westernwindows.ca',
+            to: 'shane@westernwindows.ca',
             replyTo: email,
             subject: `🏠 New Quote Request: ${esc(service)} — ${esc(name)}`,
             html: `

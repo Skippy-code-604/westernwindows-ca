@@ -3,10 +3,9 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // Admin whitelist check
     // NOTE: kept in sync with ADMIN_EMAILS in app/src/lib/auth-context.tsx
-    // (chris@nsccr.ca added so he isn't write-denied after passing the app gate).
     function isAdmin() {
       return request.auth != null &&
-             request.auth.token.email in ['shane@nsccr.ca', 'chris@nsccr.ca'];
+             request.auth.token.email in ['shane@nsccr.ca'];
     }
 
     // Public read for website content (gallery, services, etc.)
