@@ -17,7 +17,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
-    icon: path.join(__dirname, '../public/icon.png'),
+    icon: path.join(__dirname, '../public/icon.ico'),
     show: false,
   });
 
@@ -129,6 +129,22 @@ ipcMain.handle('dialog:exportCSV', async (_, csvContent, defaultName) => {
   try {
     fs.writeFileSync(filePath, csvContent, 'utf-8');
     shell.openPath(filePath);
+    return { success: true, filePath };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// --- IPC: Export DXF (1:1 CAD file for fabricator CNC) ---
+ipcMain.handle('dialog:exportDXF', async (_, dxfContent, defaultName) => {
+  const { filePath, canceled } = await dialog.showSaveDialog({
+    title: 'Export DXF (1:1 for CNC)',
+    defaultPath: defaultName || 'glass-panel.dxf',
+    filters: [{ name: 'DXF Drawing', extensions: ['dxf'] }],
+  });
+  if (canceled || !filePath) return { success: false };
+  try {
+    fs.writeFileSync(filePath, dxfContent, 'utf-8');
     return { success: true, filePath };
   } catch (err) {
     return { success: false, error: err.message };

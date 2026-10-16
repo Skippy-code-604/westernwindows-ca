@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react'
 import {
   Settings, Maximize2, XSquare, GripHorizontal, GripVertical,
   Download, Trash2, MousePointer2, Save, FolderOpen, Printer,
-  Undo2, Redo2, Square, Plus, ArrowLeft, Copy, Edit2, CheckCircle, FileText
+  Undo2, Redo2, Square, Plus, ArrowLeft, Copy, Edit2, CheckCircle, FileText, Layers
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────
@@ -16,19 +16,28 @@ declare global {
       exportSVG: (svg: string) => Promise<{ success: boolean }>;
       exportPDF: (html: string, name: string) => Promise<{ success: boolean }>;
       exportCSV: (csv: string, name: string) => Promise<{ success: boolean }>;
+      exportDXF: (dxf: string, name: string) => Promise<{ success: boolean }>;
       print: () => Promise<void>;
     };
   }
 }
 
 type ProjectMode = 'window' | 'glass';
+// Top-level unit category — the three workflows the user picks between.
+// Derived from (projectMode, glazingSpec.build) so existing saved files need no migration.
+type UnitCategory = 'window' | 'igu' | 'monolithic';
+const CATEGORY_META: Record<UnitCategory, { label: string; short: string }> = {
+  window:     { label: 'Window / Door',    short: 'WINDOW' },
+  igu:        { label: 'IGU',              short: 'IGU' },
+  monolithic: { label: 'Monolithic Glass', short: 'MONO' },
+};
 type WindowPaneType =
   | 'fixed' | 'slide-l' | 'slide-r' | 'slide-u' | 'slide-d'
   | 'casement-l' | 'casement-r' | 'awning' | 'hopper'
   | 'double-hung' | 'tilt-turn'
   | 'patio-xo' | 'patio-ox' | 'patio-xox' | 'patio-oxxxo'
   | 'bifold';
-type GlassType = 'clear' | 'tempered' | 'laminated' | 'low-e' | 'frosted' | 'tinted' | 'starphire';
+type GlassType = 'clear' | 'tempered' | 'laminated' | 'lam-tempered' | 'low-e' | 'frosted' | 'tinted' | 'starphire';
 type EdgeFinish = 'seamed' | 'flat-ground' | 'polished' | 'beveled';
 type GlassThickness = '1/4' | '3/8' | '1/2' | '5/8' | '3/4';
 type AppView = 'project-manager' | 'unit-editor';
@@ -37,7 +46,7 @@ type AppView = 'project-manager' | 'unit-editor';
 type LiteGlassType = 'clear' | 'tempered' | 'heat-strengthened' | 'laminated' | 'lam-tempered' | 'lam-hs';
 type LiteTint = 'clear' | 'bronze' | 'grey' | 'green' | 'blue';
 type LiteThicknessMM = '3' | '4' | '5' | '6' | '8' | '10' | '12';
-type SpacerType = 'aluminum' | 'superspacer' | 'tgi' | 'swisspacer' | 'intercept' | 'foam';
+type SpacerType = 'black-rtps' | 'aluminum' | 'superspacer' | 'tgi' | 'swisspacer' | 'intercept' | 'foam';
 type SpacerWidthMM = '6' | '8' | '10' | '11' | '12' | '13' | '14' | '16' | '19';
 type GasFill = 'air' | 'argon-90' | 'argon-95' | 'krypton' | 'argon-krypton';
 type IguBuild = 'single' | 'double' | 'triple';
@@ -159,6 +168,7 @@ const GLASS_TYPES: { value: GlassType; label: string }[] = [
   { value: 'clear', label: 'Clear Annealed' },
   { value: 'tempered', label: 'Tempered (Safety)' },
   { value: 'laminated', label: 'Laminated' },
+  { value: 'lam-tempered', label: 'Laminated Tempered (Railing)' },
   { value: 'low-e', label: 'Low-E Coated' },
   { value: 'frosted', label: 'Frosted / Obscure' },
   { value: 'tinted', label: 'Tinted' },
@@ -173,7 +183,7 @@ const EDGE_FINISHES: { value: EdgeFinish; label: string }[] = [
 ];
 
 const GLASS_FILL: Record<GlassType, string> = {
-  clear: '#e0f2fe', tempered: '#dbeafe', laminated: '#ede9fe',
+  clear: '#e0f2fe', tempered: '#dbeafe', laminated: '#ede9fe', 'lam-tempered': '#e0e7ff',
   'low-e': '#d1fae5', frosted: '#f1f5f9', tinted: '#fef9c3', starphire: '#f0fdfa',
 };
 
@@ -200,13 +210,17 @@ const SPACER_WIDTHS: { mm: SpacerWidthMM; label: string; frac: string }[] = [
   { mm: '19', label: '19mm', frac: '3/4"' },
 ];
 
-const SPACER_TYPES: { value: SpacerType; label: string }[] = [
-  { value: 'aluminum',    label: 'Aluminum (standard)' },
-  { value: 'superspacer', label: 'Superspacer (TPS)' },
-  { value: 'tgi',         label: 'TGI / Intercept' },
-  { value: 'swisspacer',  label: 'Swisspacer' },
-  { value: 'intercept',   label: 'Intercept U-channel' },
-  { value: 'foam',        label: 'Foam Tape' },
+// Spacers whose price includes argon fill (so gas defaults to argon and is "included").
+const ARGON_INCLUDED_SPACERS: SpacerType[] = ['black-rtps'];
+
+const SPACER_TYPES: { value: SpacerType; label: string; short: string }[] = [
+  { value: 'black-rtps',  label: 'Black RTPS — Argon incl. (Garibaldi)', short: 'Black RTPS' },
+  { value: 'aluminum',    label: 'Aluminum (standard)',                  short: 'Aluminum' },
+  { value: 'superspacer', label: 'Superspacer (TPS)',                    short: 'Superspacer' },
+  { value: 'tgi',         label: 'TGI / Intercept',                      short: 'TGI' },
+  { value: 'swisspacer',  label: 'Swisspacer',                           short: 'Swisspacer' },
+  { value: 'intercept',   label: 'Intercept U-channel',                  short: 'Intercept' },
+  { value: 'foam',        label: 'Foam Tape',                            short: 'Foam' },
 ];
 
 const GAS_FILLS: { value: GasFill; label: string }[] = [
@@ -296,6 +310,12 @@ function isLamType(g: LiteGlassType) {
   return g === 'laminated' || g === 'lam-tempered' || g === 'lam-hs';
 }
 
+// True for any glass that is (or contains) a tempered ply — these require the
+// 5× edge-clearance rule around drilled holes (railing glass = lam-tempered).
+function isTemperedLike(g?: string) {
+  return g === 'tempered' || g === 'lam-tempered';
+}
+
 function liteTotalMM(lite: LiteSpec): number {
   if (isLamType(lite.glassType) && lite.ply1MM && lite.ply2MM) {
     const il = INTERLAYERS.find(x => x.value === (lite.interlayer || 'pvb-0.76'));
@@ -318,28 +338,66 @@ function mmToFrac(mm: number): string {
 }
 
 // ─────────────────────────────────────────────
+// HOLE DIMENSIONING (shop-drawing style)
+// Baseline dims from two datum edges (left + bottom), deduped and staggered
+// so labels never overlap — the convention CNC drills / fabricators expect.
+// ─────────────────────────────────────────────
+function dimPlan(cutouts: Cutout[], paneHin: number): { xs: number[]; ys: number[] } {
+  const uniq = (vals: number[]) => {
+    const s = [...vals].sort((a, b) => a - b);
+    const out: number[] = [];
+    for (const v of s) if (!out.length || Math.abs(v - out[out.length - 1]) > 1 / 32) out.push(v);
+    return out;
+  };
+  return {
+    xs: uniq(cutouts.map(c => c.x)),                 // from left edge
+    ys: uniq(cutouts.map(c => paneHin - c.y)),       // from bottom edge
+  };
+}
+
+// Flatten tree → panes with their sizes in inches (ratio walk), collecting holes.
+function collectHoleSchedule(tree: TreeNode, W: number, H: number): { hole: Cutout; paneW: number; paneH: number; label: string }[] {
+  const out: { hole: Cutout; paneW: number; paneH: number; label: string }[] = [];
+  let n = 0;
+  const walk = (node: TreeNode, w: number, h: number) => {
+    if (node.type === 'split') {
+      const [c1, c2] = node.children;
+      if (node.direction === 'V') { walk(c1, w * node.ratio, h); walk(c2, w * (1 - node.ratio), h); }
+      else { walk(c1, w, h * node.ratio); walk(c2, w, h * (1 - node.ratio)); }
+      return;
+    }
+    for (const c of (node.cutouts || [])) { n++; out.push({ hole: c, paneW: w, paneH: h, label: `H${n}` }); }
+  };
+  walk(tree, W, H);
+  return out;
+}
+
+// ─────────────────────────────────────────────
 // EXPORT GENERATORS
 // ─────────────────────────────────────────────
+// Compact laminated makeup, e.g. "6mm + 6mm Tempered Lami · 0.76 PVB"
 function lamConstruction(lite: LiteSpec): string {
-  const il = INTERLAYERS.find(x => x.value === (lite.interlayer || 'pvb-0.76'));
+  const ilValue = lite.interlayer || 'pvb-0.76';
+  const il = INTERLAYERS.find(x => x.value === ilValue);
   const ilMM = il?.mm || 0.76;
-  const plyName = lite.glassType === 'lam-tempered' ? 'Temp' : lite.glassType === 'lam-hs' ? 'HS' : 'Ann';
-  const intName = il ? il.label.split(' ')[0] : 'PVB';
-  if (lite.ply1MM && lite.ply2MM) {
-    return `${lite.ply1MM}mm ${plyName} + ${ilMM}mm ${intName} + ${lite.ply2MM}mm ${plyName}`;
-  }
-  const half = ((Number(lite.thicknessMM) - ilMM) / 2).toFixed(2);
-  return `${half}mm ${plyName} + ${ilMM}mm ${intName} + ${half}mm ${plyName}`;
+  const intName = ilValue.startsWith('pvb') ? 'PVB' : ilValue === 'sgp' ? 'SGP' : ilValue === 'eva' ? 'EVA' : ilValue === 'ionoplast' ? 'Ionoplast' : 'PVB';
+  const typeWord = lite.glassType === 'lam-tempered' ? 'Tempered' : lite.glassType === 'lam-hs' ? 'HS' : 'Annealed';
+  const fmt = (n: number) => Number.isInteger(n) ? `${n}` : n.toFixed(2);
+  const half = (Number(lite.thicknessMM) - ilMM) / 2;
+  const p1 = lite.ply1MM ? Number(lite.ply1MM) : half;
+  const p2 = lite.ply2MM ? Number(lite.ply2MM) : half;
+  return `${fmt(p1)}mm + ${fmt(p2)}mm ${typeWord} Lami · ${ilMM} ${intName}`;
 }
 
 function liteSpecLabel(lite: LiteSpec): string {
-  const thk = LITE_THICKNESS_MM.find(t => t.mm === lite.thicknessMM);
-  const type = LITE_GLASS_TYPES.find(t => t.value === lite.glassType);
   const tint = lite.tint !== 'clear' ? ` ${lite.tint}` : '';
   const lowe = lite.hasLowE && lite.lowEProduct ? ` + ${lite.lowEProduct} @#${lite.lowESurface}` : '';
-  const isLam = lite.glassType === 'laminated' || lite.glassType === 'lam-tempered' || lite.glassType === 'lam-hs';
-  const lamNote = isLam ? ` [${lamConstruction(lite)}]` : '';
-  return `${thk?.label || lite.thicknessMM}mm ${type?.label || ''}${tint}${lowe}${lamNote}`;
+  // Laminated: the makeup string already conveys plies + type, no extra prefix/brackets.
+  if (isLamType(lite.glassType)) return `${lamConstruction(lite)}${tint}${lowe}`;
+  const thk = LITE_THICKNESS_MM.find(t => t.mm === lite.thicknessMM);
+  const type = LITE_GLASS_TYPES.find(t => t.value === lite.glassType);
+  // thk.label already includes "mm" (e.g. "6mm") — don't append another.
+  return `${thk?.label || `${lite.thicknessMM}mm`} ${type?.label || ''}${tint}${lowe}`;
 }
 
 function glazingSpecLabel(spec: GlazingSpec): string {
@@ -354,19 +412,92 @@ function glazingSpecLabel(spec: GlazingSpec): string {
 
 function generateCSV(project: Project): string {
   const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
-  const header = ['#','Name','Location','Qty','Width (in)','Height (in)','Area (ft²)','Mode','IGU Build','Glazing Spec','IGU Total (mm)','IGU Total (in)'];
+  // One column per component so the manufacturer can parse/import each spec directly.
+  const header = [
+    '#','Name','Location','Qty','Width (in)','Height (in)','Area (ft²)','Category','Build',
+    'Lite 1 (Ext)','Spacer 1','Gas 1','Lite 2','Spacer 2','Gas 2','Lite 3 (Int)',
+    'Total (mm)','Total (in)',
+  ];
+  const spacerStr = (s?: SpacerSpec) => s ? `${s.widthMM}mm ${SPACER_TYPES.find(t => t.value === s.type)?.short || s.type}` : '';
+  const gasStr = (gx?: GasFill) => gx ? (GAS_FILLS.find(x => x.value === gx)?.label || '') : '';
+  const liteStr = (l?: LiteSpec) => l ? liteSpecLabel(l) : '';
   const rows = project.units.map((u, i) => {
-    const totalMM = calcIguThicknessMM(u.glazingSpec);
+    const g = u.glazingSpec;
+    const b = g.build;
+    const totalMM = calcIguThicknessMM(g);
+    const cat = CATEGORY_META[unitCategoryOf(u.projectMode, b)].label;
     return [
       i + 1, u.name, u.location, u.quantity,
       u.overallWidth, u.overallHeight,
       (u.overallWidth * u.overallHeight / 144 * u.quantity).toFixed(2),
-      u.projectMode, u.glazingSpec.build,
-      glazingSpecLabel(u.glazingSpec),
+      cat, b,
+      liteStr(g.lite1),
+      b === 'single' ? '' : spacerStr(g.spacer1),
+      b === 'single' ? '' : gasStr(g.gasFill1),
+      b === 'single' ? '' : liteStr(g.lite2),
+      b === 'triple' ? spacerStr(g.spacer2) : '',
+      b === 'triple' ? gasStr(g.gasFill2) : '',
+      b === 'triple' ? liteStr(g.lite3) : '',
       totalMM, mmToFrac(totalMM),
     ].map(esc).join(',');
   });
   return [header.map(esc).join(','), ...rows].join('\r\n');
+}
+
+// ─────────────────────────────────────────────
+// DXF EXPORT (1:1 scale, inches, R12-compatible)
+// Fabricator/CNC convention: closed polyline outline per lite on layer GLASS,
+// hole circles on layer HOLES, Y-up with datum at bottom-left of each lite.
+// Garibaldi waives their template charge when a CAD file is supplied.
+// ─────────────────────────────────────────────
+function generateUnitDXF(unit: Unit): string {
+  const L: (string | number)[] = [];
+  const p = (...vals: (string | number)[]) => L.push(...vals);
+
+  // Header — R12, units = inches
+  p(0, 'SECTION', 2, 'HEADER');
+  p(9, '$ACADVER', 1, 'AC1009');
+  p(9, '$INSUNITS', 70, 1);
+  p(0, 'ENDSEC');
+  // Layer table
+  p(0, 'SECTION', 2, 'TABLES', 0, 'TABLE', 2, 'LAYER', 70, 2);
+  p(0, 'LAYER', 2, 'GLASS', 70, 0, 62, 5, 6, 'CONTINUOUS');
+  p(0, 'LAYER', 2, 'HOLES', 70, 0, 62, 1, 6, 'CONTINUOUS');
+  p(0, 'ENDTAB', 0, 'ENDSEC');
+  p(0, 'SECTION', 2, 'ENTITIES');
+
+  // Collect panes (glass mode: each pane is a separate lite, laid out side by side, 2" apart)
+  const panes: { w: number; h: number; cutouts: Cutout[] }[] = [];
+  const walk = (node: TreeNode, w: number, h: number) => {
+    if (node.type === 'split') {
+      const [c1, c2] = node.children;
+      if (node.direction === 'V') { walk(c1, w * node.ratio, h); walk(c2, w * (1 - node.ratio), h); }
+      else { walk(c1, w, h * node.ratio); walk(c2, w, h * (1 - node.ratio)); }
+      return;
+    }
+    panes.push({ w, h, cutouts: node.cutouts || [] });
+  };
+  walk(unit.tree, unit.overallWidth, unit.overallHeight);
+
+  const f = (n: number) => Number(n.toFixed(6));
+  let ox = 0;
+  for (const pane of panes) {
+    // Closed outline — POLYLINE + VERTEX (max CAD/CNC compatibility)
+    p(0, 'POLYLINE', 8, 'GLASS', 66, 1, 70, 1);
+    for (const [vx, vy] of [[0, 0], [pane.w, 0], [pane.w, pane.h], [0, pane.h]] as [number, number][]) {
+      p(0, 'VERTEX', 8, 'GLASS', 10, f(ox + vx), 20, f(vy), 30, 0);
+    }
+    p(0, 'SEQEND');
+    // Holes — DXF is Y-up; stored y is from the top edge
+    for (const c of pane.cutouts) {
+      p(0, 'CIRCLE', 8, 'HOLES', 10, f(ox + c.x), 20, f(pane.h - c.y), 30, 0, 40, f(c.diameter / 2));
+    }
+    ox += pane.w + 2; // 2" gap between separate lites
+  }
+
+  p(0, 'ENDSEC', 0, 'EOF');
+  // DXF group-code pairs, one value per line, CRLF
+  return L.join('\r\n') + '\r\n';
 }
 
 // ─────────────────────────────────────────────
@@ -381,6 +512,8 @@ function renderUnitSVGString(unit: Unit): string {
   const FR = isGlass ? 0 : Math.max(4, Math.round(FRAME_THICKNESS * sc));
   const MU = Math.max(2, Math.round(MULLION_THICKNESS * sc));
   const SA = Math.max(2, Math.round(SASH_PROFILE * sc));
+  let holeNum = 0; // running hole ID (H1, H2, …) across panes
+  const anyHoles = isGlass && collectHoleSchedule(unit.tree, W, H).length > 0;
 
   function opIndicator(type: WindowPaneType, x: number, y: number, w: number, h: number): string {
     const cx = x + w / 2, cy = y + h / 2;
@@ -437,9 +570,49 @@ function renderUnitSVGString(unit: Unit): string {
       s += opIndicator(pane.paneType, x, y, w, h);
     } else {
       s += `<rect x="${x+2}" y="${y+2}" width="${Math.max(0,w-4)}" height="${Math.max(0,h-4)}" fill="${gcol}" stroke="#34d399" stroke-width="1" stroke-dasharray="3 2"/>`;
-      for (const c of (pane.cutouts || [])) {
-        const ccx = x + c.x * sc, ccy = y + c.y * sc, r = (c.diameter / 2) * sc;
-        s += `<circle cx="${ccx}" cy="${ccy}" r="${Math.max(1.5,r)}" fill="white" stroke="#64748b" stroke-width="1"/>`;
+      const paneHin = h / sc;
+      const holes = pane.cutouts || [];
+      const dc = '#334155', fs = 4.6;
+      // Hole circles + IDs
+      holes.forEach((c) => {
+        holeNum++;
+        const ccx = x + c.x * sc, ccy = y + c.y * sc, r = Math.max(1.5, (c.diameter / 2) * sc);
+        s += `<circle cx="${ccx}" cy="${ccy}" r="${r}" fill="white" stroke="#475569" stroke-width="0.9"/>`;
+        s += `<line x1="${ccx-r*0.7}" y1="${ccy}" x2="${ccx+r*0.7}" y2="${ccy}" stroke="#475569" stroke-width="0.4"/>`;
+        s += `<line x1="${ccx}" y1="${ccy-r*0.7}" x2="${ccx}" y2="${ccy+r*0.7}" stroke="#475569" stroke-width="0.4"/>`;
+        s += `<text x="${ccx}" y="${ccy - r - 1.2}" text-anchor="middle" font-size="${fs}" fill="#0f172a" font-family="Arial" font-weight="bold">H${holeNum}</text>`;
+      });
+      if (holes.length) {
+        const { xs, ys } = dimPlan(holes, paneHin);
+        const tick = 1.6;
+        // ── X dims: staggered rows BELOW the glass, baseline = left edge
+        const rowsUsed = Math.min(xs.length, 2);
+        xs.forEach((vx, i) => {
+          const row = i % 2;
+          const dy = y + h + 6 + row * 7.5;
+          const ex = x + vx * sc;
+          s += `<line x1="${ex}" y1="${y+h}" x2="${ex}" y2="${dy+tick}" stroke="${dc}" stroke-width="0.3" stroke-dasharray="1.4 1"/>`;
+          s += `<line x1="${x}" y1="${dy}" x2="${ex}" y2="${dy}" stroke="${dc}" stroke-width="0.45"/>`;
+          s += `<line x1="${x}" y1="${dy-tick}" x2="${x}" y2="${dy+tick}" stroke="${dc}" stroke-width="0.7"/>`;
+          s += `<line x1="${ex}" y1="${dy-tick}" x2="${ex}" y2="${dy+tick}" stroke="${dc}" stroke-width="0.7"/>`;
+          s += `<text x="${(x+ex)/2}" y="${dy-1}" text-anchor="middle" font-size="${fs}" fill="${dc}" font-family="Arial" font-weight="bold">${toFraction(vx)}</text>`;
+        });
+        // left datum extension line
+        s += `<line x1="${x}" y1="${y+h}" x2="${x}" y2="${y + h + 6 + (rowsUsed-1) * 7.5 + tick}" stroke="${dc}" stroke-width="0.3" stroke-dasharray="1.4 1"/>`;
+        // ── Y dims: staggered columns RIGHT of the glass, baseline = bottom edge
+        const colsUsed = Math.min(ys.length, 2);
+        ys.forEach((vy, i) => {
+          const col = i % 2;
+          const dx = x + w + 6 + col * 19;
+          const cyy = y + h - vy * sc;
+          s += `<line x1="${x+w}" y1="${cyy}" x2="${dx+tick}" y2="${cyy}" stroke="${dc}" stroke-width="0.3" stroke-dasharray="1.4 1"/>`;
+          s += `<line x1="${dx}" y1="${y+h}" x2="${dx}" y2="${cyy}" stroke="${dc}" stroke-width="0.45"/>`;
+          s += `<line x1="${dx-tick}" y1="${y+h}" x2="${dx+tick}" y2="${y+h}" stroke="${dc}" stroke-width="0.7"/>`;
+          s += `<line x1="${dx-tick}" y1="${cyy}" x2="${dx+tick}" y2="${cyy}" stroke="${dc}" stroke-width="0.7"/>`;
+          s += `<text x="${dx+2}" y="${(cyy + y + h) / 2 + fs * 0.38}" text-anchor="start" font-size="${fs}" fill="${dc}" font-family="Arial" font-weight="bold">${toFraction(vy)}</text>`;
+        });
+        // bottom datum extension line
+        s += `<line x1="${x+w}" y1="${y+h}" x2="${x + w + 6 + (colsUsed-1) * 19 + tick}" y2="${y+h}" stroke="${dc}" stroke-width="0.3" stroke-dasharray="1.4 1"/>`;
       }
     }
     return s;
@@ -453,7 +626,9 @@ function renderUnitSVGString(unit: Unit): string {
     inner += renderNode(unit.tree, 0, 0, svgW, svgH);
   }
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">${inner}</svg>`;
+  // Extra room for the baseline dimension bands (right = Y dims, bottom = X dims)
+  const exR = anyHoles ? 48 : 0, exB = anyHoles ? 24 : 0;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW + exR}" height="${svgH + exB}" viewBox="0 0 ${svgW + exR} ${svgH + exB}">${inner}</svg>`;
 }
 
 function generateQuoteHTML(project: Project): string {
@@ -466,22 +641,49 @@ function generateQuoteHTML(project: Project): string {
     ? `file://${window.location.pathname.replace(/\/[^/]+$/, '')}/ww1.png`.replace('app.asar', 'app.asar.unpacked')
     : './ww1.png';
 
+  // Per-spec column helpers — manufacturer wants each dimension/spec in its own column.
+  const spacerShort = (s: SpacerSpec) => `${s.widthMM}mm ${SPACER_TYPES.find(t => t.value === s.type)?.short || s.type}`;
+  const gasLbl = (gx: GasFill | undefined) => GAS_FILLS.find(g => g.value === gx)?.label || 'Air';
+  const dash = '<span style="color:#cbd5e1">—</span>';
+
   const rows = project.units.map((u, i) => {
-    const totalMM = calcIguThicknessMM(u.glazingSpec);
+    const g = u.glazingSpec;
+    const b = g.build;
+    const totalMM = calcIguThicknessMM(g);
     const area = (u.overallWidth * u.overallHeight / 144 * u.quantity).toFixed(2);
-    const spec = glazingSpecLabel(u.glazingSpec);
     const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+
+    const lite1Cell = liteSpecLabel(g.lite1);
+    let spacerCell = dash, gasCell = dash, lite2Cell = dash;
+    if (b !== 'single') {
+      spacerCell = g.spacer1 ? spacerShort(g.spacer1) : dash;
+      gasCell = gasLbl(g.gasFill1);
+      lite2Cell = g.lite2 ? liteSpecLabel(g.lite2) : dash;
+      if (b === 'triple') {
+        if (g.spacer2) spacerCell += `<br>${spacerShort(g.spacer2)}`;
+        gasCell += `<br>${gasLbl(g.gasFill2)}`;
+        if (g.lite3) lite2Cell += `<br>${liteSpecLabel(g.lite3)}`;
+      }
+    }
+
+    const td = 'padding:7px 10px;border-bottom:1px solid #e2e8f0';
+    const tdc = `${td};text-align:center`;
+    const tdSpec = `${td};font-size:10px;color:#334155`;
     return `
       <tr style="background:${bg}">
-        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-weight:600;color:#64748b">${i + 1}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600">${u.name}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#64748b">${u.location || '—'}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center">${u.quantity}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-family:monospace;font-size:13px">${toFraction(u.overallWidth)} × ${toFraction(u.overallHeight)}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center">${u.glazingSpec.build.toUpperCase()}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:11px;color:#334155">${spec}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-family:monospace;font-size:12px">${totalMM}mm<br><span style="color:#94a3b8;font-size:10px">${mmToFrac(totalMM)}</span></td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;color:#64748b">${area} ft²</td>
+        <td style="${tdc};font-weight:600;color:#64748b">${i + 1}</td>
+        <td style="${td};font-weight:600">${u.name}</td>
+        <td style="${td};color:#64748b">${u.location || '—'}</td>
+        <td style="${tdc}">${u.quantity}</td>
+        <td style="${tdc};font-family:monospace;font-size:12px">${toFraction(u.overallWidth)}</td>
+        <td style="${tdc};font-family:monospace;font-size:12px">${toFraction(u.overallHeight)}</td>
+        <td style="${tdc};font-size:10px;font-weight:600">${b.toUpperCase()}</td>
+        <td style="${tdSpec}">${lite1Cell}</td>
+        <td style="${tdSpec}">${spacerCell}</td>
+        <td style="${tdSpec}">${gasCell}</td>
+        <td style="${tdSpec}">${lite2Cell}</td>
+        <td style="${tdc};font-family:monospace;font-size:11px">${totalMM}mm<br><span style="color:#94a3b8;font-size:9px">${mmToFrac(totalMM)}</span></td>
+        <td style="${td};text-align:right;color:#64748b">${area} ft²</td>
       </tr>`;
   }).join('');
 
@@ -540,15 +742,19 @@ function generateQuoteHTML(project: Project): string {
   <table>
     <thead>
       <tr>
-        <th style="width:36px">#</th>
+        <th style="width:28px">#</th>
         <th>Unit Name</th>
         <th>Location</th>
-        <th style="width:40px;text-align:center">Qty</th>
-        <th style="width:120px;text-align:center">Dimensions</th>
-        <th style="width:60px;text-align:center">Build</th>
-        <th>Glazing Specification</th>
-        <th style="width:80px;text-align:center">IGU Total</th>
-        <th style="width:70px;text-align:right">Area</th>
+        <th style="width:34px;text-align:center">Qty</th>
+        <th style="width:58px;text-align:center">Width</th>
+        <th style="width:58px;text-align:center">Height</th>
+        <th style="width:52px;text-align:center">Build</th>
+        <th>Lite 1 (Ext)</th>
+        <th>Spacer</th>
+        <th>Gas</th>
+        <th>Lite 2 (Int)</th>
+        <th style="width:66px;text-align:center">Total</th>
+        <th style="width:62px;text-align:right">Area</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody>
@@ -556,7 +762,7 @@ function generateQuoteHTML(project: Project): string {
       <tr class="totals-row">
         <td colspan="3" style="padding:10px 12px">TOTALS</td>
         <td style="padding:10px 12px;text-align:center;border-left:1px solid #e2e8f0">${totalUnits}</td>
-        <td colspan="4" style="padding:10px 12px;border-left:1px solid #e2e8f0"></td>
+        <td colspan="8" style="padding:10px 12px;border-left:1px solid #e2e8f0"></td>
         <td style="padding:10px 12px;text-align:right;border-left:1px solid #e2e8f0">${totalArea.toFixed(2)} ft²</td>
       </tr>
     </tfoot>
@@ -611,7 +817,35 @@ function generateQuoteHTML(project: Project): string {
               ${b==='triple' ? liteRow(spec.lite3, 'Lite 3 (Int)') : ''}
             </tbody>
           </table>
-          ${''/* unit notes not on Unit model */}
+          ${(() => {
+            // Hole schedule — fabricator convention: every hole X/Y from datum edges to CENTER,
+            // Ø callout per hole, plus a summary "Drill N holes" instruction line.
+            if (u.projectMode !== 'glass') return '';
+            const sched = collectHoleSchedule(u.tree, u.overallWidth, u.overallHeight);
+            if (!sched.length) return '';
+            const byDia = new Map<number, number>();
+            sched.forEach(s2 => byDia.set(s2.hole.diameter, (byDia.get(s2.hole.diameter) || 0) + 1));
+            const drillLine = [...byDia.entries()].map(([d, n]) => `DRILL ${n} HOLE${n > 1 ? 'S' : ''} &Oslash;${toFraction(d)}&quot; (${(d * 25.4).toFixed(0)}mm)`).join(' &nbsp;·&nbsp; ');
+            const rows2 = sched.map(s2 => `
+              <tr>
+                <td style="padding:3px 8px;font-size:10px;font-weight:700;color:#0f172a">${s2.label}</td>
+                <td style="padding:3px 8px;font-size:10px;font-family:monospace">${toFraction(s2.hole.x)}&quot;</td>
+                <td style="padding:3px 8px;font-size:10px;font-family:monospace">${toFraction(s2.paneH - s2.hole.y)}&quot;</td>
+                <td style="padding:3px 8px;font-size:10px;font-family:monospace">&Oslash;${toFraction(s2.hole.diameter)}&quot; (${(s2.hole.diameter * 25.4).toFixed(0)}mm)</td>
+              </tr>`).join('');
+            return `
+          <table style="border-collapse:collapse;width:100%;border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;margin-top:8px">
+            <thead><tr style="background:#fef3c7">
+              <th style="padding:4px 8px;font-size:10px;text-align:left;color:#92400e">Hole</th>
+              <th style="padding:4px 8px;font-size:10px;text-align:left;color:#92400e">X — from left edge</th>
+              <th style="padding:4px 8px;font-size:10px;text-align:left;color:#92400e">Y — from bottom edge</th>
+              <th style="padding:4px 8px;font-size:10px;text-align:left;color:#92400e">Diameter</th>
+            </tr></thead>
+            <tbody>${rows2}</tbody>
+          </table>
+          <div style="margin-top:5px;font-size:10px;font-weight:700;color:#92400e;letter-spacing:0.3px">${drillLine}</div>
+          <div style="margin-top:2px;font-size:9px;color:#94a3b8">Hole positions to hole CENTER from left &amp; bottom glass edges. As viewed from Surface&nbsp;#1 (exterior). Tolerance &plusmn;1/16&quot; unless noted.</div>`;
+          })()}
         </div>
       </div>`;
     }).join('')}
@@ -621,7 +855,7 @@ function generateQuoteHTML(project: Project): string {
 
   <div class="footer">
     <span>Western Windows Inc. &nbsp;·&nbsp; (604) 904-6580 &nbsp;·&nbsp; info@westernwindows.ca &nbsp;·&nbsp; westernwindows.ca</span>
-    <span>All dimensions in inches unless noted. Verify dimensions before ordering. &nbsp;·&nbsp; ${new Date().toLocaleString()}</span>
+    <span>All dimensions in inches unless noted. Verify dimensions before ordering. &nbsp;·&nbsp; ${new Date().toLocaleString()} &nbsp;·&nbsp; v${__APP_VERSION__}</span>
   </div>
 </body></html>`;
 }
@@ -669,10 +903,39 @@ const makeDefaultLite = (): LiteSpec => ({
 const makeDefaultGlazing = (): GlazingSpec => ({
   build: 'double',
   lite1: { ...makeDefaultLite(), hasLowE: true, lowEManufacturer: 'Cardinal', lowEProduct: 'LoE-272', lowESurface: 2 },
-  spacer1: { type: 'aluminum', widthMM: '12' },
+  spacer1: { type: 'black-rtps', widthMM: '12' },
   gasFill1: 'argon-90',
   lite2: makeDefaultLite(),
 });
+
+// Derive the top-level category from the stored fields (no separate stored field needed).
+function unitCategoryOf(projectMode: ProjectMode, build: IguBuild): UnitCategory {
+  if (projectMode === 'window') return 'window';
+  return build === 'single' ? 'monolithic' : 'igu';
+}
+
+// Reshape a glazing spec for a given build, preserving existing lites/spacers where possible.
+function applyBuild(spec: GlazingSpec, build: IguBuild): GlazingSpec {
+  const next: GlazingSpec = { ...spec, build };
+  if (build === 'single') {
+    delete next.spacer1; delete next.gasFill1; delete next.lite2; delete next.spacer2; delete next.gasFill2; delete next.lite3;
+  }
+  if (build === 'double') {
+    next.spacer1 = spec.spacer1 || { type: 'black-rtps', widthMM: '12' };
+    next.gasFill1 = spec.gasFill1 || 'argon-90';
+    next.lite2 = spec.lite2 || makeDefaultLite();
+    delete next.spacer2; delete next.gasFill2; delete next.lite3;
+  }
+  if (build === 'triple') {
+    next.spacer1 = spec.spacer1 || { type: 'black-rtps', widthMM: '12' };
+    next.gasFill1 = spec.gasFill1 || 'argon-90';
+    next.lite2 = spec.lite2 || makeDefaultLite();
+    next.spacer2 = spec.spacer2 || { type: 'black-rtps', widthMM: '12' };
+    next.gasFill2 = spec.gasFill2 || 'argon-90';
+    next.lite3 = spec.lite3 || makeDefaultLite();
+  }
+  return next;
+}
 
 const makeNewUnit = (): Unit => ({
   id: uuid(), name: 'Unit 1', location: '', quantity: 1,
@@ -841,7 +1104,7 @@ function StartScreen({
           <Maximize2 className="w-7 h-7 text-white" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-white">Fenestration Pro</h1>
+          <h1 className="text-2xl font-bold text-white">Fenestration Pro <span className="text-sm font-semibold text-neutral-500 align-middle">v{__APP_VERSION__}</span></h1>
           <p className="text-sm text-neutral-400">Window & Glass Configurator</p>
         </div>
       </div>
@@ -979,7 +1242,7 @@ function ProjectManager({
       <div className="bg-neutral-900 text-white px-6 py-3 flex items-center gap-4 shadow-lg">
         <div className="flex items-center gap-2 flex-1">
           <Maximize2 className="w-5 h-5 text-blue-400" />
-          <span className="text-sm font-semibold text-neutral-400">Fenestration Pro</span>
+          <span className="text-sm font-semibold text-neutral-400">Fenestration Pro <span className="text-[10px] text-neutral-500">v{__APP_VERSION__}</span></span>
           <span className="text-neutral-600 mx-1">/</span>
           {editingName ? (
             <input
@@ -1131,7 +1394,9 @@ function UnitCard({ unit, index, onOpen, onDuplicate, onDelete, onUpdate, canDel
 }) {
   const [editingName, setEditingName] = useState(false);
   const [nameVal, setNameVal] = useState(unit.name);
-  const typeLabel = unit.projectMode === 'glass' ? 'Glass Panel' : 'Window/Door';
+  const cat = unitCategoryOf(unit.projectMode, unit.glazingSpec.build);
+  const typeLabel = CATEGORY_META[cat].label;
+  const catBadge = cat === 'window' ? 'bg-blue-100 text-blue-700' : cat === 'igu' ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700';
   const area = (unit.overallWidth * unit.overallHeight / 144 * unit.quantity).toFixed(1);
 
   return (
@@ -1163,8 +1428,8 @@ function UnitCard({ unit, index, onOpen, onDuplicate, onDelete, onUpdate, canDel
             )}
             <p className="text-xs text-neutral-400 mt-0.5">{typeLabel}</p>
           </div>
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${unit.projectMode === 'glass' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
-            {unit.projectMode === 'glass' ? 'GLASS' : 'WINDOW'}
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${catBadge}`}>
+            {CATEGORY_META[cat].short}
           </span>
         </div>
 
@@ -1278,6 +1543,8 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
   const [cutoutMode, setCutoutMode] = useState(false);
   const [cutoutDiameter, setCutoutDiameter] = useState(1.25);
   const [cutoutBlocked, setCutoutBlocked] = useState(false);
+  const [cutoutX, setCutoutX] = useState(2);        // inches from left (side) edge to hole center
+  const [cutoutYBottom, setCutoutYBottom] = useState(2); // inches from bottom edge to hole center
   const [sidebarZoom, setSidebarZoom] = useState<number>(() => parseFloat(localStorage.getItem('wp-sidebar-zoom') || '1'));
   const [leftW, setLeftW] = useState<number>(() => parseInt(localStorage.getItem('wp-left-w') || '288'));
   const [rightW, setRightW] = useState<number>(() => parseInt(localStorage.getItem('wp-right-w') || '256'));
@@ -1298,6 +1565,21 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
     setHistoryIdx(i => i + 1);
     setEditorState(next);
   }, [historyIdx]);
+
+  // Top-level workflow category, derived from mode + glazing build.
+  const category = unitCategoryOf(projectMode, glazingSpec.build);
+  const setCategory = (cat: UnitCategory) => {
+    if (cat === 'window') {
+      pushState({ ...editorState, projectMode: 'window' });
+    } else if (cat === 'monolithic') {
+      pushState({ ...editorState, projectMode: 'glass' });
+      // Monolithic glass (railing/shower/structural) doesn't carry Low-E — strip the window default.
+      setGlazingSpec(s => { const next = applyBuild(s, 'single'); return { ...next, lite1: { ...next.lite1, hasLowE: false } }; });
+    } else { // igu — ensure at least a double build
+      pushState({ ...editorState, projectMode: 'glass' });
+      setGlazingSpec(s => s.build === 'single' ? applyBuild(s, 'double') : s);
+    }
+  };
 
   const undo = useCallback(() => {
     if (historyIdx > 0) { setEditorState(history[historyIdx - 1]); setHistoryIdx(i => i - 1); }
@@ -1419,6 +1701,14 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
 
   const handlePrint = () => window.electronAPI ? window.electronAPI.print() : window.print();
 
+  // 1:1 DXF for the fabricator's CNC (glass mode only)
+  const handleExportDXF = async () => {
+    const dxf = generateUnitDXF({ ...unit, tree, overallWidth, overallHeight, projectMode, glazingSpec });
+    const name = `${unit.name}.dxf`.replace(/[^a-zA-Z0-9\s\-_.]/g, '');
+    if (window.electronAPI?.exportDXF) await window.electronAPI.exportDXF(dxf, name);
+    else { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([dxf], { type: 'application/dxf' })); a.download = name; a.click(); }
+  };
+
   // Mullion drag
   const onDragStart = (e: React.MouseEvent, splitId: string, startRatio: number, boundsW: number, boundsH: number, dir: 'V' | 'H') => {
     e.stopPropagation(); e.preventDefault();
@@ -1469,7 +1759,8 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
     const paneWin = paneWpx / scale;
     const paneHin = paneHpx / scale;
     const r = cutoutDiameter / 2;
-    const isTempered = glazingSpec.lite1.glassType === 'tempered';
+    const paneNode = findNode(tree, nodeId) as PaneNode;
+    const isTempered = isTemperedLike(glazingSpec.lite1.glassType);
 
     // Block if rim would enter exclusion zone
     const tooClose = isTempered && (
@@ -1482,7 +1773,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
       return;
     }
 
-    const pane = findNode(tree, nodeId) as PaneNode;
+    const pane = paneNode;
     const newCutouts: Cutout[] = [{ id: uuid(), x: cx, y: cy, diameter: cutoutDiameter }];
 
     // Auto-mirror L↔R if enabled
@@ -1499,6 +1790,51 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
     }
 
     const newTree = updateNode(tree, nodeId, n => ({
+      ...n, cutouts: [...((n as PaneNode).cutouts || []), ...newCutouts]
+    }));
+    pushState({ ...editorState, tree: newTree });
+  };
+
+  // Add a hole at exact typed coordinates: X from left/side, Y from bottom (center of hole)
+  const handleAddCutoutCoords = () => {
+    if (!selectedNode || selectedNode.type !== 'pane') return;
+    const paneData = panesList.find(p => p.id === selectedNode.id);
+    if (!paneData) return;
+    const paneWin = paneData.w / scale;
+    const paneHin = paneData.h / scale;
+    const cx = cutoutX;                  // from left edge
+    const cy = paneHin - cutoutYBottom;  // convert "from bottom" → internal "from top"
+    const r = cutoutDiameter / 2;
+    const isTempered = isTemperedLike(glazingSpec.lite1.glassType);
+
+    // Must be fully inside the glass
+    const outOfBounds = cx - r < 0 || cy - r < 0 || paneWin - (cx + r) < 0 || paneHin - (cy + r) < 0;
+    // Tempered edge-clearance rule
+    const tooClose = isTempered && (
+      cx - r < minEdgeIn || cy - r < minEdgeIn ||
+      paneWin - (cx + r) < minEdgeIn || paneHin - (cy + r) < minEdgeIn
+    );
+    if (outOfBounds || tooClose) {
+      setCutoutBlocked(true);
+      setTimeout(() => setCutoutBlocked(false), 1200);
+      return;
+    }
+
+    const pane = findNode(tree, selectedNode.id) as PaneNode;
+    const newCutouts: Cutout[] = [{ id: uuid(), x: cx, y: cy, diameter: cutoutDiameter }];
+
+    // Auto-mirror L↔R if enabled
+    if (pane?.mirrorCutouts) {
+      const mx = paneWin - cx;
+      const noOverlap = Math.abs(mx - cx) >= cutoutDiameter;
+      const inBounds = mx - r >= 0 && mx + r <= paneWin;
+      const mirrorEdgeOk = !isTempered || (mx - r >= minEdgeIn && paneWin - (mx + r) >= minEdgeIn);
+      if (noOverlap && inBounds && mirrorEdgeOk) {
+        newCutouts.push({ id: uuid(), x: mx, y: cy, diameter: cutoutDiameter, mirrored: true });
+      }
+    }
+
+    const newTree = updateNode(tree, selectedNode.id, n => ({
       ...n, cutouts: [...((n as PaneNode).cutouts || []), ...newCutouts]
     }));
     pushState({ ...editorState, tree: newTree });
@@ -1536,7 +1872,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
           )}
 
           {/* Tempered glass exclusion zone overlay */}
-          {isGlass && (node.glassType === 'tempered' || glazingSpec.lite1.glassType === 'tempered') && (() => {
+          {isGlass && isTemperedLike(glazingSpec.lite1.glassType) && (() => {
             const margin = minEdgeIn * scale;
             return (
               <>
@@ -1553,11 +1889,11 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
           })()}
 
           {/* Cutout circles */}
-          {isGlass && (node.cutouts || []).map((c: Cutout) => {
+          {isGlass && (node.cutouts || []).map((c: Cutout, ci: number) => {
             const ccx = c.x * scale, ccy = c.y * scale;
             const r = (c.diameter / 2) * scale;
             const margin = minEdgeIn * scale;
-            const isTempered = node.glassType === 'tempered' || glazingSpec.lite1.glassType === 'tempered';
+            const isTempered = isTemperedLike(glazingSpec.lite1.glassType);
             const violation = isTempered && (
               ccx - r < margin || ccy - r < margin ||
               w - (ccx + r) < margin || h - (ccy + r) < margin
@@ -1571,15 +1907,66 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
                   strokeDasharray={dashArray} opacity={0.85} />
                 <line x1={ccx - r * 0.6} y1={ccy} x2={ccx + r * 0.6} y2={ccy} stroke={stroke} strokeWidth={0.8} />
                 <line x1={ccx} y1={ccy - r * 0.6} x2={ccx} y2={ccy + r * 0.6} stroke={stroke} strokeWidth={0.8} />
-                {violation && (
-                  <text x={ccx} y={ccy - r - 3} textAnchor="middle" fontSize={8} fill="#dc2626" fontWeight="700">!</text>
-                )}
-                {c.mirrored && !violation && (
-                  <text x={ccx} y={ccy - r - 3} textAnchor="middle" fontSize={7} fill="#3b82f6" fontWeight="700">M</text>
-                )}
+
+                {/* Hole ID + diameter */}
+                <text x={ccx} y={ccy - r - 3} textAnchor="middle" fontSize={8} fill="#0f172a" fontWeight="700">
+                  {violation ? '⚠' : ''}H{ci + 1} ⌀{toFraction(c.diameter)}
+                </text>
               </g>
             );
           })}
+
+          {/* Baseline hole dimensions — shop-drawing style, outside the glass.
+              X dims in staggered rows below (datum: left edge); Y dims in staggered
+              columns to the right (datum: bottom edge). Deduped so shared coordinates
+              print once and labels never overlap. */}
+          {isGlass && (node.cutouts || []).length > 0 && (() => {
+            const dc = '#334155';
+            const fs = Math.max(8, Math.min(10, w / 26));
+            const tick = 3;
+            const { xs, ys } = dimPlan(node.cutouts || [], h / scale);
+            const rowH = fs + 6, colW = 40;
+            return (
+              <g style={{ pointerEvents: 'none' }}>
+                {xs.map((vx, i) => {
+                  const row = i % 2;
+                  const dy = h + 11 + row * rowH;
+                  const ex = vx * scale;
+                  const lbl = toFraction(vx);
+                  return (
+                    <g key={`dx${i}`}>
+                      <line x1={ex} y1={h} x2={ex} y2={dy + tick} stroke={dc} strokeWidth={0.5} strokeDasharray="3 2" opacity={0.6} />
+                      <line x1={0} y1={dy} x2={ex} y2={dy} stroke={dc} strokeWidth={0.8} />
+                      <line x1={0} y1={dy - tick} x2={0} y2={dy + tick} stroke={dc} strokeWidth={1.1} />
+                      <line x1={ex} y1={dy - tick} x2={ex} y2={dy + tick} stroke={dc} strokeWidth={1.1} />
+                      <rect x={ex / 2 - fs * lbl.length * 0.32 - 1} y={dy - fs - 2.5} width={fs * lbl.length * 0.64 + 2} height={fs + 2} fill="white" opacity={0.85} rx={1.5} />
+                      <text x={ex / 2} y={dy - 3} textAnchor="middle" fontSize={fs} fill={dc} fontWeight="700">{lbl}</text>
+                    </g>
+                  );
+                })}
+                {/* left datum extension */}
+                <line x1={0} y1={h} x2={0} y2={h + 11 + (Math.min(xs.length, 2) - 1) * rowH + tick} stroke={dc} strokeWidth={0.5} strokeDasharray="3 2" opacity={0.6} />
+                {ys.map((vy, i) => {
+                  const col = i % 2;
+                  const dx = w + 11 + col * colW;
+                  const cyy = h - vy * scale;
+                  const lbl = toFraction(vy);
+                  return (
+                    <g key={`dy${i}`}>
+                      <line x1={w} y1={cyy} x2={dx + tick} y2={cyy} stroke={dc} strokeWidth={0.5} strokeDasharray="3 2" opacity={0.6} />
+                      <line x1={dx} y1={h} x2={dx} y2={cyy} stroke={dc} strokeWidth={0.8} />
+                      <line x1={dx - tick} y1={h} x2={dx + tick} y2={h} stroke={dc} strokeWidth={1.1} />
+                      <line x1={dx - tick} y1={cyy} x2={dx + tick} y2={cyy} stroke={dc} strokeWidth={1.1} />
+                      <rect x={dx + 2} y={(cyy + h) / 2 - fs * 0.7} width={fs * lbl.length * 0.62 + 3} height={fs + 2} fill="white" opacity={0.85} rx={1.5} />
+                      <text x={dx + 3.5} y={(cyy + h) / 2 + fs * 0.38} textAnchor="start" fontSize={fs} fill={dc} fontWeight="700">{lbl}</text>
+                    </g>
+                  );
+                })}
+                {/* bottom datum extension */}
+                <line x1={w} y1={h} x2={w + 11 + (Math.min(ys.length, 2) - 1) * colW + tick} y2={h} stroke={dc} strokeWidth={0.5} strokeDasharray="3 2" opacity={0.6} />
+              </g>
+            );
+          })()}
 
           {!isGlass && <PaneIndicators type={node.paneType} w={w} h={h} />}
 
@@ -1686,6 +2073,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
           {[
             { icon: <Save className="w-3.5 h-3.5" />, label: 'Save File', fn: onSaveProject, hot: 'Ctrl+S' },
             { icon: <Download className="w-3.5 h-3.5" />, label: 'SVG', fn: handleExportSVG, hot: '' },
+            ...(projectMode === 'glass' ? [{ icon: <Download className="w-3.5 h-3.5" />, label: 'DXF', fn: handleExportDXF, hot: '' }] : []),
             { icon: <Printer className="w-3.5 h-3.5" />, label: 'Print', fn: handlePrint, hot: '' },
           ].map(({ icon, label, fn }) => (
             <button key={label} onClick={fn}
@@ -1727,21 +2115,27 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
           className="bg-white border-r border-neutral-200 flex flex-col z-10 overflow-y-auto">
           <div className="p-4 space-y-4">
 
-            {/* Mode */}
+            {/* Category — Window / IGU / Monolithic */}
             <div>
-              <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Mode</label>
-              <div className="grid grid-cols-2 gap-1.5">
-                {(['window', 'glass'] as ProjectMode[]).map(m => (
-                  <button key={m} onClick={() => pushState({ ...editorState, projectMode: m })}
-                    className={`py-1.5 rounded text-xs font-semibold border transition-colors flex items-center justify-center gap-1
-                      ${editorState.projectMode === m
-                        ? m === 'window' ? 'bg-blue-600 text-white border-blue-600' : 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-white text-neutral-600 border-neutral-300 hover:bg-neutral-50'}`}>
-                    {m === 'window' ? <Maximize2 className="w-3 h-3" /> : <Square className="w-3 h-3" />}
-                    {m === 'window' ? 'Window' : 'Glass Panel'}
-                  </button>
-                ))}
+              <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Type</label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(['window', 'igu', 'monolithic'] as UnitCategory[]).map(c => {
+                  const active = category === c;
+                  const activeCls = c === 'window' ? 'bg-blue-600 text-white border-blue-600'
+                    : c === 'igu' ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-emerald-600 text-white border-emerald-600';
+                  return (
+                    <button key={c} onClick={() => setCategory(c)}
+                      title={CATEGORY_META[c].label}
+                      className={`py-1.5 rounded text-[11px] font-semibold border transition-colors flex flex-col items-center justify-center gap-0.5 leading-tight
+                        ${active ? activeCls : 'bg-white text-neutral-600 border-neutral-300 hover:bg-neutral-50'}`}>
+                      {c === 'window' ? <Maximize2 className="w-3 h-3" /> : c === 'igu' ? <Layers className="w-3 h-3" /> : <Square className="w-3 h-3" />}
+                      {c === 'window' ? 'Window' : c === 'igu' ? 'IGU' : 'Mono'}
+                    </button>
+                  );
+                })}
               </div>
+              <p className="text-[10px] text-neutral-400 mt-1">{CATEGORY_META[category].label}</p>
             </div>
 
             <hr className="border-neutral-100" />
@@ -1832,29 +2226,15 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
 
                   {projectMode === 'glass' && (
                     <div className="space-y-2">
-                      {glazingSpec.build === 'single' ? (
-                        // Single-lite: show per-pane glass type, thickness, edge finish
+                      {category === 'monolithic' ? (
+                        // Monolithic: edit the single lite directly — one source of truth that the quote reads.
                         <>
-                          <div>
-                            <label className="block text-xs font-semibold mb-1 text-neutral-600">Glass Type</label>
-                            <select value={(selectedNode as PaneNode).glassType || 'tempered'}
-                              onChange={e => updateProp('glassType', e.target.value)}
-                              className="w-full p-2 border border-neutral-300 rounded focus:ring-2 focus:ring-emerald-500 outline-none bg-white text-xs">
-                              {GLASS_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold mb-1.5 text-neutral-600">Thickness</label>
-                            <div className="flex gap-1 flex-wrap">
-                              {(['1/4', '3/8', '1/2', '5/8', '3/4'] as GlassThickness[]).map(t => (
-                                <button key={t} onClick={() => updateProp('glassThickness', t)}
-                                  className={`px-2 py-0.5 rounded border text-xs font-mono transition-colors
-                                    ${(selectedNode as PaneNode).glassThickness === t ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-neutral-300 hover:bg-neutral-50'}`}>
-                                  {t}"
-                                </button>
-                              ))}
-                            </div>
-                          </div>
+                          <LiteSection
+                            lite={glazingSpec.lite1}
+                            liteNum={1}
+                            title="Glass"
+                            onChange={l => setGlazingSpec(s => ({ ...s, lite1: l }))}
+                          />
                           <div>
                             <label className="block text-xs font-semibold mb-1 text-neutral-600">Edge Finish</label>
                             <select value={(selectedNode as PaneNode).edgeFinish || 'polished'}
@@ -1927,11 +2307,40 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
                           <p className="text-[10px] text-emerald-600 text-center">Click glass pane. Press Esc to cancel.</p>
                         )}
                         {cutoutBlocked && (
-                          <p className="text-[10px] text-red-600 text-center font-bold animate-pulse">⛔ Too close to edge — blocked</p>
+                          <p className="text-[10px] text-red-600 text-center font-bold animate-pulse">⛔ Off glass or too close to edge — blocked</p>
                         )}
 
+                        {/* Exact coordinate entry — center of hole off bottom & side */}
+                        <div className="p-2 bg-sky-50 border border-sky-200 rounded space-y-1.5">
+                          <div className="text-[10px] font-semibold text-sky-700">Place by coordinates (center)</div>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <label className="block text-[10px] text-neutral-500 mb-1">X — from left (in)</label>
+                              <input type="number" min={0} step={0.0625}
+                                value={cutoutX}
+                                onChange={e => setCutoutX(Number(e.target.value))}
+                                className="w-full p-1.5 border border-neutral-300 rounded text-xs font-mono focus:ring-1 focus:ring-sky-500 outline-none" />
+                            </div>
+                            <div className="flex-1">
+                              <label className="block text-[10px] text-neutral-500 mb-1">Y — from bottom (in)</label>
+                              <input type="number" min={0} step={0.0625}
+                                value={cutoutYBottom}
+                                onChange={e => setCutoutYBottom(Number(e.target.value))}
+                                className="w-full p-1.5 border border-neutral-300 rounded text-xs font-mono focus:ring-1 focus:ring-sky-500 outline-none" />
+                            </div>
+                          </div>
+                          <div className="text-[10px] text-neutral-400 font-mono">
+                            ⌀ {cutoutDiameter}" &nbsp;·&nbsp; X {(cutoutX * 25.4).toFixed(0)}mm · Y {(cutoutYBottom * 25.4).toFixed(0)}mm from bottom
+                          </div>
+                          <button
+                            onClick={handleAddCutoutCoords}
+                            className="w-full py-1.5 rounded text-xs font-semibold border bg-white text-sky-700 border-sky-300 hover:bg-sky-100 transition-colors">
+                            + Add Hole at X / Y
+                          </button>
+                        </div>
+
                         {/* Min edge distance info */}
-                        {(glazingSpec.lite1.glassType === 'tempered' || (selectedNode as PaneNode).glassType === 'tempered') && (
+                        {isTemperedLike(glazingSpec.lite1.glassType) && (
                           <div className="p-2 bg-red-50 border border-red-200 rounded text-[10px] text-red-700">
                             <span className="font-bold">Min edge dist:</span> {minEdgeIn.toFixed(3)}" ({(minEdgeIn * 25.4).toFixed(1)}mm)<br/>
                             <span className="text-red-500">= {glazingSpec.lite1.thicknessMM}mm × 5 &mdash; ENFORCED</span>
@@ -1945,7 +2354,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
                               const paneData = panesList.find(p => p.id === selectedNode!.id);
                               const pW = paneData ? paneData.w / scale : overallWidth;
                               const pH = paneData ? paneData.h / scale : overallHeight;
-                              const isTempered = glazingSpec.lite1.glassType === 'tempered' || (selectedNode as PaneNode).glassType === 'tempered';
+                              const isTempered = isTemperedLike(glazingSpec.lite1.glassType);
                               const r = c.diameter / 2;
                               const violation = isTempered && (
                                 c.x - r < minEdgeIn || c.y - r < minEdgeIn ||
@@ -1956,7 +2365,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
                                   ${violation ? 'bg-red-50 border-red-300' : c.mirrored ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'}`}>
                                   <div className="flex items-center justify-between">
                                     <span className={`font-mono font-semibold ${violation ? 'text-red-700' : c.mirrored ? 'text-blue-700' : 'text-green-700'}`}>
-                                      {violation ? '⚠' : c.mirrored ? '🔵 M' : '✓'} #{i+1} @ {toFraction(c.x)}",{toFraction(c.y)}"
+                                      {violation ? '⚠' : c.mirrored ? '🔵 M' : '✓'} #{i+1} @ X {toFraction(c.x)}" · Y {toFraction(pH - c.y)}"↑
                                     </span>
                                     <button onClick={() => {
                                       const newTree = updateNode(tree, selectedNode!.id, n => ({
@@ -1964,6 +2373,34 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
                                       }));
                                       pushState({ ...editorState, tree: newTree });
                                     }} className="text-red-400 hover:text-red-600">✕</button>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-neutral-400 w-8">X←</span>
+                                    <input type="number" min={0} step={0.0625}
+                                      value={Number(c.x.toFixed(4))}
+                                      onChange={ev => {
+                                        const newX = Number(ev.target.value);
+                                        const newTree = updateNode(tree, selectedNode!.id, n => ({
+                                          ...n, cutouts: ((n as PaneNode).cutouts || []).map((x: Cutout) =>
+                                            x.id === c.id ? { ...x, x: newX } : x
+                                          )
+                                        }));
+                                        pushState({ ...editorState, tree: newTree });
+                                      }}
+                                      className="w-16 border border-neutral-300 rounded px-1 py-0.5 text-[10px] font-mono outline-none focus:ring-1 focus:ring-blue-400" />
+                                    <span className="text-neutral-400 w-8 text-right">Y↑</span>
+                                    <input type="number" min={0} step={0.0625}
+                                      value={Number((pH - c.y).toFixed(4))}
+                                      onChange={ev => {
+                                        const newYBottom = Number(ev.target.value);
+                                        const newTree = updateNode(tree, selectedNode!.id, n => ({
+                                          ...n, cutouts: ((n as PaneNode).cutouts || []).map((x: Cutout) =>
+                                            x.id === c.id ? { ...x, y: pH - newYBottom } : x
+                                          )
+                                        }));
+                                        pushState({ ...editorState, tree: newTree });
+                                      }}
+                                      className="w-16 border border-neutral-300 rounded px-1 py-0.5 text-[10px] font-mono outline-none focus:ring-1 focus:ring-blue-400" />
                                   </div>
                                   <div className="flex items-center gap-1">
                                     <span className="text-neutral-400">⌀</span>
@@ -2028,8 +2465,10 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
               )}
             </div>
 
-            {/* Glazing Spec */}
-            <GlazingPanel spec={glazingSpec} onChange={setGlazingSpec} />
+            {/* Glazing Spec — monolithic edits its single lite up top, so this is hidden there */}
+            {category !== 'monolithic' && (
+              <GlazingPanel spec={glazingSpec} onChange={setGlazingSpec} category={category} />
+            )}
 
             {/* Shortcuts */}
             <div className="p-2.5 bg-neutral-50 rounded-lg border border-neutral-100">
@@ -2057,7 +2496,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
             <div className={`px-3 py-1.5 rounded-full shadow border text-xs font-semibold flex items-center gap-2
               ${projectMode === 'glass' ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-white text-neutral-600 border-neutral-200'}`}>
               <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${projectMode === 'glass' ? 'bg-white' : 'bg-blue-500'}`} />
-              {projectMode === 'glass' ? 'Glass Panel — frameless' : 'Drag mullions to resize'}
+              {projectMode === 'glass' ? `${CATEGORY_META[category].label} — frameless` : 'Drag mullions to resize'}
             </div>
           </div>
           <div className="absolute bottom-3 right-3 z-10 flex items-center gap-1 bg-white p-1 rounded-lg shadow border border-neutral-200">
@@ -2162,9 +2601,11 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
               const wIn = pane.w / scale, hIn = pane.h / scale;
               const area = (wIn * hIn / 144).toFixed(2);
               const isSel = selectedId === pane.id;
-              const typeLabel = projectMode === 'glass'
-                ? `${pane.glassThickness || '1/2'}" ${GLASS_TYPES.find(g => g.value === pane.glassType)?.label || 'Glass'}`
-                : (WINDOW_PANE_TYPES.find(t => t.value === pane.paneType)?.label || pane.paneType);
+              const typeLabel = projectMode === 'window'
+                ? (WINDOW_PANE_TYPES.find(t => t.value === pane.paneType)?.label || pane.paneType)
+                : category === 'monolithic'
+                  ? liteSpecLabel(glazingSpec.lite1)
+                  : `IGU ${glazingSpec.build}`;
               return (
                 <div key={pane.id} onClick={() => setSelectedId(pane.id)}
                   className={`p-2 rounded-lg border cursor-pointer transition-all text-xs
@@ -2196,9 +2637,10 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
 // ─────────────────────────────────────────────
 // GLAZING PANEL
 // ─────────────────────────────────────────────
-function LiteSection({ lite, liteNum, onChange }: {
+function LiteSection({ lite, liteNum, onChange, title }: {
   lite: LiteSpec; liteNum: number;
   onChange: (updated: LiteSpec) => void;
+  title?: string;
 }) {
   const mfr = LOW_E_DATABASE.find(m => m.name === lite.lowEManufacturer);
   const product = mfr?.products.find(p => p.name === lite.lowEProduct);
@@ -2247,7 +2689,7 @@ function LiteSection({ lite, liteNum, onChange }: {
   return (
     <div className={`rounded-lg border p-2.5 space-y-2 ${liteBg[liteNum]}`}>
       <p className={`text-[10px] font-bold uppercase tracking-wider ${liteColors[liteNum]}`}>
-        ● Lite {liteNum}
+        ● {title || `Lite ${liteNum}`}
       </p>
 
       {/* Thickness — per-ply for lam types, single for monolithic */}
@@ -2430,15 +2872,24 @@ function SpacerSection({ spacer, gasFill, spacerNum, onChange, onGasChange }: {
   onChange: (s: SpacerSpec) => void;
   onGasChange: (g: GasFill) => void;
 }) {
+  const argonIncluded = ARGON_INCLUDED_SPACERS.includes(spacer.type);
+  const handleType = (t: SpacerType) => {
+    onChange({ ...spacer, type: t });
+    // Argon-included spacers ship with argon — default the fill to argon if it was plain air.
+    if (ARGON_INCLUDED_SPACERS.includes(t) && gasFill === 'air') onGasChange('argon-90');
+  };
   return (
     <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 space-y-2">
       <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">◆ Spacer {spacerNum}</p>
       <div>
         <label className="block text-[10px] text-neutral-500 mb-1">Type</label>
-        <select value={spacer.type} onChange={e => onChange({ ...spacer, type: e.target.value as SpacerType })}
+        <select value={spacer.type} onChange={e => handleType(e.target.value as SpacerType)}
           className="w-full text-xs border border-neutral-300 rounded px-1.5 py-1 bg-white outline-none focus:ring-1 focus:ring-amber-400">
           {SPACER_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
+        {argonIncluded && (
+          <p className="text-[9px] text-emerald-600 font-semibold mt-1">✓ Argon fill included with this spacer</p>
+        )}
       </div>
       <div>
         <label className="block text-[10px] text-neutral-500 mb-1">Width</label>
@@ -2469,7 +2920,9 @@ function SpacerSection({ spacer, gasFill, spacerNum, onChange, onGasChange }: {
   );
 }
 
-function GlazingPanel({ spec, onChange }: { spec: GlazingSpec; onChange: (s: GlazingSpec) => void }) {
+function GlazingPanel({ spec, onChange, category = 'igu' }: { spec: GlazingSpec; onChange: (s: GlazingSpec) => void; category?: UnitCategory }) {
+  // IGU units can't be "single" (that's monolithic); windows may be any build.
+  const buildOptions: IguBuild[] = category === 'igu' ? ['double', 'triple'] : ['single', 'double', 'triple'];
   const [open, setOpen] = useState(true);
   const totalMM = calcIguThicknessMM(spec);
   const totalLabel = `${totalMM}mm (≈ ${mmToFrac(totalMM)})`;
@@ -2480,25 +2933,7 @@ function GlazingPanel({ spec, onChange }: { spec: GlazingSpec; onChange: (s: Gla
   const updateSpacer1 = (s: SpacerSpec) => onChange({ ...spec, spacer1: s });
   const updateSpacer2 = (s: SpacerSpec) => onChange({ ...spec, spacer2: s });
 
-  const setBuild = (build: IguBuild) => {
-    const next: GlazingSpec = { ...spec, build };
-    if (build === 'single') { delete next.spacer1; delete next.gasFill1; delete next.lite2; delete next.spacer2; delete next.gasFill2; delete next.lite3; }
-    if (build === 'double') {
-      next.spacer1 = spec.spacer1 || { type: 'aluminum', widthMM: '12' };
-      next.gasFill1 = spec.gasFill1 || 'argon-90';
-      next.lite2 = spec.lite2 || makeDefaultLite();
-      delete next.spacer2; delete next.gasFill2; delete next.lite3;
-    }
-    if (build === 'triple') {
-      next.spacer1 = spec.spacer1 || { type: 'aluminum', widthMM: '12' };
-      next.gasFill1 = spec.gasFill1 || 'argon-90';
-      next.lite2 = spec.lite2 || makeDefaultLite();
-      next.spacer2 = spec.spacer2 || { type: 'aluminum', widthMM: '12' };
-      next.gasFill2 = spec.gasFill2 || 'argon-90';
-      next.lite3 = spec.lite3 || makeDefaultLite();
-    }
-    onChange(next);
-  };
+  const setBuild = (build: IguBuild) => onChange(applyBuild(spec, build));
 
   return (
     <div className="border border-neutral-200 rounded-lg overflow-hidden">
@@ -2521,8 +2956,8 @@ function GlazingPanel({ spec, onChange }: { spec: GlazingSpec; onChange: (s: Gla
           {/* Build selector */}
           <div>
             <label className="block text-[10px] text-neutral-500 mb-1.5">IGU Build</label>
-            <div className="grid grid-cols-3 gap-1">
-              {(['single', 'double', 'triple'] as IguBuild[]).map(b => (
+            <div className={`grid gap-1 ${buildOptions.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+              {buildOptions.map(b => (
                 <button key={b} onClick={() => setBuild(b)}
                   className={`py-1 rounded text-xs font-semibold border capitalize transition-colors
                     ${spec.build === b ? 'bg-neutral-800 text-white border-neutral-800' : 'bg-white text-neutral-600 border-neutral-300 hover:bg-neutral-50'}`}>
