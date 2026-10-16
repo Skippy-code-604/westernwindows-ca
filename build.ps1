@@ -52,7 +52,9 @@ Write-Host "  Portal files copied to public/portal/" -ForegroundColor Green
 Write-Host "`n[4/5] Building window designer..." -ForegroundColor Yellow
 Push-Location (Join-Path $PSScriptRoot "designer")
 if (-not (Test-Path "node_modules")) { npm ci --no-audit --no-fund }
+$env:DESIGNER_BASE = '/designer/'   # absolute asset paths for the website (see designer/vite.config.ts)
 npm run build
+Remove-Item Env:DESIGNER_BASE
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Designer build failed!" -ForegroundColor Red
     Pop-Location

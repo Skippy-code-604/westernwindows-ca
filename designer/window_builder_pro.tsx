@@ -636,10 +636,11 @@ function generateQuoteHTML(project: Project): string {
   const totalUnits = project.units.reduce((s, u) => s + u.quantity, 0);
   const totalArea = project.units.reduce((s, u) => s + u.overallWidth * u.overallHeight / 144 * u.quantity, 0);
 
-  // Logo: load from public folder if running in Electron, else use relative path
+  // Logo: load from public folder if running in Electron; on the web use an absolute URL, because the
+  // quote is downloaded as a standalone HTML file where a relative path can't resolve.
   const logoSrc = window.electronAPI
     ? `file://${window.location.pathname.replace(/\/[^/]+$/, '')}/ww1.png`.replace('app.asar', 'app.asar.unpacked')
-    : './ww1.png';
+    : `${window.location.origin}${import.meta.env.BASE_URL === './' ? '/' : import.meta.env.BASE_URL}ww1.png`;
 
   // Per-spec column helpers — manufacturer wants each dimension/spec in its own column.
   const spacerShort = (s: SpacerSpec) => `${s.widthMM}mm ${SPACER_TYPES.find(t => t.value === s.type)?.short || s.type}`;

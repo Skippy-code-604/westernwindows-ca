@@ -49,7 +49,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
       <div className="w-full max-w-sm rounded-xl bg-white p-8 shadow text-center space-y-4">
-        <img src="./ww1.png" alt="Western Windows" className="mx-auto h-12" />
+        <img src={`${import.meta.env.BASE_URL}ww1.png`} alt="Western Windows" className="mx-auto h-12" />
         <h1 className="text-lg font-semibold text-slate-800">Window Designer</h1>
         {state.kind === 'loading' && <p className="text-slate-500">Checking sign-in…</p>}
         {state.kind === 'error' && <p className="text-red-600 text-sm">{state.message}</p>}
