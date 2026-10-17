@@ -1,4 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
+import { exportQuotePdf } from './src/quotePdf';
 import {
   Settings, Maximize2, XSquare, GripHorizontal, GripVertical,
   Download, Trash2, MousePointer2, Save, FolderOpen, Printer,
@@ -1455,23 +1456,13 @@ function ProjectManager({
       await window.electronAPI.exportPDF(html, name);
       return;
     }
-    // Web: print the quote from a hidden frame → the browser's "Save as PDF" (same Chromium engine Electron's
-    // printToPDF uses, and the quote's @page sets Letter landscape). Previously this downloaded the raw HTML.
-    const frame = document.createElement('iframe');
-    frame.style.cssText = 'position:fixed;width:0;height:0;border:0;visibility:hidden';
-    frame.srcdoc = html;
-    const prevTitle = document.title;
-    frame.onload = () => {
-      // The suggested PDF file name comes from the document title.
-      document.title = name.replace(/\.pdf$/, '');
-      if (frame.contentDocument) frame.contentDocument.title = document.title;
-      const cleanup = () => { document.title = prevTitle; frame.remove(); };
-      frame.contentWindow?.addEventListener('afterprint', () => setTimeout(cleanup, 100));
-      frame.contentWindow?.focus();
-      frame.contentWindow?.print();
-      setTimeout(() => { if (document.body.contains(frame)) cleanup(); }, 60_000);   // fallback if afterprint never fires
-    };
-    document.body.appendChild(frame);
+    // Web: build a real PDF in the browser and download it (previously this downloaded the raw HTML, and a
+    // print-dialog approach depended on the browser offering "Save as PDF").
+    try {
+      await exportQuotePdf(html, name);
+    } catch (e) {
+      alert(`Couldn't create the PDF: ${e instanceof Error ? e.message : e}`);
+    }
   };
 
   const handleExportCSV = async () => {
