@@ -91,7 +91,15 @@ interface PaneNode {
   glassType?: GlassType; glassThickness?: GlassThickness;
   edgeFinish?: EdgeFinish; cutouts?: Cutout[];
   mirrorCutouts?: boolean; // auto-mirror holes L↔R
+  obscure?: ObscureType;   // privacy glass for this section (window units); undefined = clear vision glass
 }
+
+// Privacy / obscure glass, per section (bathrooms, closets). Supplier decides which lite carries it unless told.
+type ObscureType = 'acid-etch' | 'sandblast' | 'pattern-rain' | 'pattern-reed' | 'pattern-glue-chip' | 'pattern-pinhead' | 'frosted-film';
+
+// Window orders from a supplier: glazing is "supplier standard" unless a facet is added. Only added facets are
+// shown in the editor and printed on the quote. 'full' exposes the complete lite/spacer/gas spec (IGU-style).
+type GlazingFacet = 'build' | 'tempered' | 'lowE' | 'gas' | 'spacer' | 'tint' | 'full';
 interface SplitNode {
   id: string; type: 'split'; direction: 'V' | 'H';
   ratio: number; children: TreeNode[];
@@ -109,6 +117,7 @@ interface Unit {
   tree: TreeNode;
   glazingSpec: GlazingSpec;
   roAllowance?: number;   // inches, TOTAL added to unit size for the rough opening (half per side). Default DEFAULT_RO_ALLOWANCE.
+  glazingFacets?: GlazingFacet[];  // window units only: which glazing specs are dictated; none = supplier standard
 }
 
 interface Project {
@@ -277,6 +286,29 @@ const LITE_TINTS: { value: LiteTint; label: string; color: string }[] = [
 interface LowEProduct { name: string; surfaces: number[]; notes: string; }
 interface LowEManufacturer { name: string; products: LowEProduct[]; }
 
+const OBSCURE_OPTIONS: { value: ObscureType; label: string }[] = [
+  { value: 'acid-etch',         label: 'Acid etched' },
+  { value: 'sandblast',         label: 'Sandblasted' },
+  { value: 'pattern-rain',      label: 'Pattern — Rain' },
+  { value: 'pattern-reed',      label: 'Pattern — Reed' },
+  { value: 'pattern-glue-chip', label: 'Pattern — Glue chip' },
+  { value: 'pattern-pinhead',   label: 'Pattern — Pinhead' },
+  { value: 'frosted-film',      label: 'Frosted film (applied)' },
+];
+const obscureLabel = (o?: ObscureType) => OBSCURE_OPTIONS.find(x => x.value === o)?.label || '';
+// For user text placed into the quote HTML (names, locations, notes).
+const escHtml = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[c]);
+
+const GLAZING_FACETS: { value: GlazingFacet; label: string }[] = [
+  { value: 'build',    label: 'Panes (double / triple)' },
+  { value: 'tempered', label: 'Tempered' },
+  { value: 'lowE',     label: 'Low-E' },
+  { value: 'gas',      label: 'Gas fill' },
+  { value: 'spacer',   label: 'Spacer' },
+  { value: 'tint',     label: 'Tint' },
+  { value: 'full',     label: 'Full glass spec…' },
+];
+
 const LOW_E_GENERIC = 'Generic';
 const LOW_E_DATABASE: LowEManufacturer[] = [
   // ── Generic terms (field-identified, no specific product needed) ──
@@ -425,6 +457,34 @@ function glazingSpecLabel(spec: GlazingSpec): string {
   const spacer2 = spec.spacer2 ? `${spec.spacer2.widthMM}mm ${SPACER_TYPES.find(s => s.value === spec.spacer2!.type)?.label || spec.spacer2.type}` : '';
   const gas2 = GAS_FILLS.find(g => g.value === spec.gasFill2)?.label || '';
   return `${liteSpecLabel(spec.lite1)} / ${spacer1} / ${gas1} / ${spec.lite2 ? liteSpecLabel(spec.lite2) : ''} / ${spacer2} / ${gas2} / ${spec.lite3 ? liteSpecLabel(spec.lite3) : ''}`;
+}
+
+// Window units: only the facets the user added are part of the order; everything else is the supplier's standard.
+function windowGlazingSummary(spec: GlazingSpec, facets: GlazingFacet[] = []): string {
+  if (facets.includes('full')) return glazingSpecLabel(spec);
+  const parts: string[] = [];
+  if (facets.includes('build')) parts.push(spec.build === 'single' ? 'Single pane' : spec.build === 'double' ? 'Double pane' : 'Triple pane');
+  if (facets.includes('tempered')) parts.push('Tempered');
+  if (facets.includes('lowE')) parts.push(spec.lite1.hasLowE && spec.lite1.lowEProduct ? spec.lite1.lowEProduct : 'Low-E');
+  if (facets.includes('gas')) parts.push(GAS_FILLS.find(g => g.value === spec.gasFill1)?.label || 'Argon');
+  if (facets.includes('spacer') && spec.spacer1) parts.push(`${SPACER_TYPES.find(s => s.value === spec.spacer1!.type)?.short || spec.spacer1.type} spacer`);
+  if (facets.includes('tint') && spec.lite1.tint !== 'clear') parts.push(`${spec.lite1.tint} tint`);
+  return parts.length ? parts.join(' · ') : 'Supplier standard';
+}
+
+// Every section (leaf pane) with its size in inches, left→right / top→bottom. Same basis as the editor canvas
+// and BOM: inside the frame in window mode, full lite in glass mode; split ratios apply after the mullion.
+function collectSections(u: Pick<Unit, 'tree' | 'overallWidth' | 'overallHeight' | 'projectMode'>): { pane: PaneNode; w: number; h: number }[] {
+  const frame = u.projectMode === 'glass' ? 0 : FRAME_THICKNESS * 2;
+  const out: { pane: PaneNode; w: number; h: number }[] = [];
+  const walk = (n: TreeNode, w: number, h: number) => {
+    if (n.type === 'pane') { out.push({ pane: n, w, h }); return; }
+    const [a, b] = n.children;
+    if (n.direction === 'V') { const aw = (w - MULLION_THICKNESS) * n.ratio; walk(a, aw, h); walk(b, w - MULLION_THICKNESS - aw, h); }
+    else { const ah = (h - MULLION_THICKNESS) * n.ratio; walk(a, w, ah); walk(b, w, h - MULLION_THICKNESS - ah); }
+  };
+  walk(u.tree, u.overallWidth - frame, u.overallHeight - frame);
+  return out;
 }
 
 function generateCSV(project: Project): string {
@@ -584,6 +644,8 @@ function renderUnitSVGString(unit: Unit): string {
     let s = `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="white" stroke="#1e293b" stroke-width="1.5"/>`;
     if (!isGlass) {
       s += `<rect x="${x+SA}" y="${y+SA}" width="${Math.max(0,w-SA*2)}" height="${Math.max(0,h-SA*2)}" fill="${gcol}" stroke="#94a3b8" stroke-width="0.75"/>`;
+      // Privacy glass: stipple over the glass (pattern id is per unit — all units share one quote document)
+      if (pane.obscure) s += `<rect x="${x+SA}" y="${y+SA}" width="${Math.max(0,w-SA*2)}" height="${Math.max(0,h-SA*2)}" fill="url(#obs-${unit.id})"/>`;
       s += opIndicator(pane.paneType, x, y, w, h);
     } else {
       s += `<rect x="${x+2}" y="${y+2}" width="${Math.max(0,w-4)}" height="${Math.max(0,h-4)}" fill="${gcol}" stroke="#34d399" stroke-width="1" stroke-dasharray="3 2"/>`;
@@ -645,7 +707,8 @@ function renderUnitSVGString(unit: Unit): string {
 
   // Extra room for the baseline dimension bands (right = Y dims, bottom = X dims)
   const exR = anyHoles ? 48 : 0, exB = anyHoles ? 24 : 0;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW + exR}" height="${svgH + exB}" viewBox="0 0 ${svgW + exR} ${svgH + exB}">${inner}</svg>`;
+  const defs = `<defs><pattern id="obs-${unit.id}" width="4" height="4" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.6" fill="#64748b"/><circle cx="3" cy="3" r="0.6" fill="#64748b"/></pattern></defs>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW + exR}" height="${svgH + exB}" viewBox="0 0 ${svgW + exR} ${svgH + exB}">${defs}${inner}</svg>`;
 }
 
 function generateQuoteHTML(project: Project): string {
@@ -687,6 +750,23 @@ function generateQuoteHTML(project: Project): string {
     const td = 'padding:7px 10px;border-bottom:1px solid #e2e8f0';
     const tdc = `${td};text-align:center`;
     const tdSpec = `${td};font-size:10px;color:#334155`;
+    if (u.projectMode === 'window') {
+      // Window from a supplier: one Glazing cell with only what was specified; privacy glass called out.
+      const obs = [...new Set(collectSections(u).map(s => s.pane.obscure).filter(Boolean))].map(o => obscureLabel(o as ObscureType));
+      const glazing = escHtml(windowGlazingSummary(g, u.glazingFacets)) + (obs.length ? `<br><strong>Privacy:</strong> ${escHtml(obs.join(', '))}` : '');
+      return `
+      <tr style="background:${bg}">
+        <td style="${tdc};font-weight:600;color:#64748b">${i + 1}</td>
+        <td style="${td};font-weight:600">${escHtml(u.name)}</td>
+        <td style="${td};color:#64748b">${escHtml(u.location) || '—'}</td>
+        <td style="${tdc}">${u.quantity}</td>
+        <td style="${tdc};font-family:monospace;font-size:12px">${toFraction(u.overallWidth)}</td>
+        <td style="${tdc};font-family:monospace;font-size:12px">${toFraction(u.overallHeight)}</td>
+        <td style="${tdc};font-size:10px;font-weight:700;font-family:monospace;color:#2563eb">${deriveXOString(u.tree)}</td>
+        <td colspan="5" style="${tdSpec}">${glazing}</td>
+        <td style="${td};text-align:right;color:#64748b">${area} ft²</td>
+      </tr>`;
+    }
     return `
       <tr style="background:${bg}">
         <td style="${tdc};font-weight:600;color:#64748b">${i + 1}</td>
@@ -746,7 +826,7 @@ function generateQuoteHTML(project: Project): string {
       </div>
     </div>
     <div class="project-meta">
-      <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Glazing Order / Supplier Quote</div>
+      <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${project.units.length && project.units.every(u => u.projectMode === 'window') ? 'Window Order' : 'Glazing Order'} / Supplier Quote</div>
       <div class="project-name">${project.name}</div>
       ${project.customer ? `<div class="meta-row"><strong>Customer:</strong> ${project.customer}</div>` : ''}
       <div class="meta-row"><strong>Date:</strong> ${date}</div>
@@ -766,12 +846,15 @@ function generateQuoteHTML(project: Project): string {
         <th style="width:34px;text-align:center">Qty</th>
         <th style="width:58px;text-align:center">Width</th>
         <th style="width:58px;text-align:center">Height</th>
-        <th style="width:52px;text-align:center">Build</th>
+        ${project.units.length && project.units.every(u => u.projectMode === 'window')
+          ? `<th style="width:52px;text-align:center">Config</th>
+        <th colspan="5">Glazing</th>`
+          : `<th style="width:52px;text-align:center">Build</th>
         <th>Lite 1 (Ext)</th>
         <th>Spacer</th>
         <th>Gas</th>
         <th>Lite 2 (Int)</th>
-        <th style="width:66px;text-align:center">Total</th>
+        <th style="width:66px;text-align:center">Total</th>`}
         <th style="width:62px;text-align:right">Area</th>
       </tr>
     </thead>
@@ -822,9 +905,34 @@ function generateQuoteHTML(project: Project): string {
               ${u.location ? `<span style="font-size:11px;color:#64748b;margin-left:8px">${u.location}</span>` : ''}
               ${u.projectMode === 'window' ? `<span style="font-family:monospace;font-size:14px;font-weight:900;color:#2563eb;letter-spacing:2px;margin-left:10px">${deriveXOString(u.tree)}</span>` : ''}
             </div>
-            <div style="font-size:10px;color:#64748b">Qty: <strong>${u.quantity}</strong> &nbsp;&nbsp; IGU: <strong>${totalMM.toFixed(2)}mm (${mmToFrac(totalMM)})</strong></div>
+            <div style="font-size:10px;color:#64748b">Qty: <strong>${u.quantity}</strong>${u.projectMode === 'window' && !(u.glazingFacets || []).includes('full') ? '' : ` &nbsp;&nbsp; IGU: <strong>${totalMM.toFixed(2)}mm (${mmToFrac(totalMM)})</strong>`}</div>
           </div>
-          <table style="border-collapse:collapse;width:100%;border:1px solid #e2e8f0;border-radius:4px;overflow:hidden">
+          ${u.projectMode === 'window' ? (() => {
+            // Window from a supplier: frame size + rough opening, glazing as specified, and each section's
+            // operation, size and privacy glass — no IGU component table unless the full spec was added.
+            const ro = u.roAllowance ?? DEFAULT_RO_ALLOWANCE;
+            const cell = 'padding:3px 8px;font-size:10px';
+            const secs = collectSections(u);
+            const rowsS = secs.map((s, k) => `<tr>
+                <td style="${cell};font-weight:700">${k + 1}</td>
+                <td style="${cell}">${escHtml(WINDOW_PANE_TYPES.find(t => t.value === s.pane.paneType)?.label || s.pane.paneType)}</td>
+                <td style="${cell};font-family:monospace">${toFraction(s.w)} × ${toFraction(s.h)}</td>
+                <td style="${cell}">${s.pane.obscure ? `<strong>${escHtml(obscureLabel(s.pane.obscure))}</strong>` : '<span style="color:#94a3b8">Clear</span>'}</td>
+              </tr>`).join('');
+            return `
+          <table style="border-collapse:collapse;width:100%;border:1px solid #e2e8f0;margin-bottom:6px">
+            <tbody>
+              <tr><td style="color:#64748b;${cell};white-space:nowrap">Frame size</td><td style="${cell};font-weight:600">${toFraction(u.overallWidth)} × ${toFraction(u.overallHeight)}</td></tr>
+              <tr><td style="color:#64748b;${cell};white-space:nowrap">Rough opening</td><td style="${cell}">${toFraction(u.overallWidth + ro)} × ${toFraction(u.overallHeight + ro)} <span style="color:#94a3b8">(+${toFraction(ro)} total)</span></td></tr>
+              <tr><td style="color:#64748b;${cell};white-space:nowrap">Glazing</td><td style="${cell}">${escHtml(windowGlazingSummary(u.glazingSpec, u.glazingFacets))}</td></tr>
+            </tbody>
+          </table>
+          <table style="border-collapse:collapse;width:100%;border:1px solid #e2e8f0">
+            <thead><tr style="background:#f1f5f9"><th style="${cell};text-align:left;color:#64748b">#</th><th style="${cell};text-align:left;color:#64748b">Section</th><th style="${cell};text-align:left;color:#64748b">Section size (inside frame)</th><th style="${cell};text-align:left;color:#64748b">Privacy glass</th></tr></thead>
+            <tbody>${rowsS}</tbody>
+          </table>`;
+          })() : ''}
+          <table style="border-collapse:collapse;width:100%;border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;${u.projectMode === 'window' && !(u.glazingFacets || []).includes('full') ? 'display:none' : ''}">
             <thead><tr style="background:#f1f5f9"><th style="padding:4px 8px;font-size:10px;text-align:left;color:#64748b">Component</th><th style="padding:4px 8px;font-size:10px;text-align:left;color:#64748b">Specification</th></tr></thead>
             <tbody style="font-family:-apple-system,sans-serif">
               <tr><td style="color:#64748b;padding:3px 8px;font-size:10px">Build</td><td style="padding:3px 8px;font-size:10px;font-weight:600">${b.toUpperCase()} &mdash; ${b==='single'?'Monolithic':b==='double'?'Insulating (IGU)':'Triple IGU'}</td></tr>
@@ -1039,19 +1147,33 @@ export default function WindowBuilderApp() {
     }
   };
 
+  const loadProjectContent = (content: string) => {
+    try {
+      const loaded = JSON.parse(content);
+      if (!loaded || !Array.isArray(loaded.units)) throw new Error('Not a Fenestration Pro project file');
+      delete loaded._v;
+      setProject(loaded as Project);
+      setProjectFile(null);
+      setIsDirty(false);
+      setView('project-manager');
+      setActiveUnitId(null);
+    } catch (e) {
+      alert(`Couldn't open that file: ${e instanceof Error ? e.message : e}`);
+    }
+  };
+
   const handleOpenProject = async () => {
     if (window.electronAPI) {
       const res = await window.electronAPI.openFile();
-      if (res.success && res.content) {
-        const loaded = JSON.parse(res.content);
-        delete loaded._v;
-        setProject(loaded as Project);
-        setProjectFile(null);
-        setIsDirty(false);
-        setView('project-manager');
-        setActiveUnitId(null);
-      }
+      if (res.success && res.content) loadProjectContent(res.content);
+      return;
     }
+    // Web: the browser's own file picker (previously Open silently did nothing outside Electron).
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.fenconfig,application/json';
+    input.onchange = async () => { const f = input.files?.[0]; if (f) loadProjectContent(await f.text()); };
+    input.click();
   };
 
   const handleCreateProject = (name: string, customer: string) => {
@@ -1573,6 +1695,8 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
   const [snapIndicator, setSnapIndicator] = useState<number | null>(null);
   const [scale, setScale] = useState(10);
   const [glazingSpec, setGlazingSpec] = useState<GlazingSpec>(unit.glazingSpec || makeDefaultGlazing());
+  // Window units: which glazing specs are dictated to the supplier (none = supplier standard)
+  const [glazingFacets, setGlazingFacets] = useState<GlazingFacet[]>(unit.glazingFacets ?? []);
   const [cutoutMode, setCutoutMode] = useState(false);
   const [cutoutDiameter, setCutoutDiameter] = useState(1.25);
   const [cutoutBlocked, setCutoutBlocked] = useState(false);
@@ -1590,8 +1714,8 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
 
   // Sync back to project whenever state changes
   useEffect(() => {
-    onSave({ tree, overallWidth, overallHeight, projectMode, glazingSpec, roAllowance });
-  }, [editorState, glazingSpec]);
+    onSave({ tree, overallWidth, overallHeight, projectMode, glazingSpec, roAllowance, glazingFacets });
+  }, [editorState, glazingSpec, glazingFacets]);
 
   const pushState = useCallback((next: EditorState) => {
     setHistory(h => [...h.slice(0, historyIdx + 1), next]);
@@ -1932,6 +2056,11 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
             <rect x={SASH_PROFILE} y={SASH_PROFILE}
               width={Math.max(0, w - SASH_PROFILE * 2)} height={Math.max(0, h - SASH_PROFILE * 2)}
               fill={glassColor} stroke="#9ca3af" strokeWidth={1} />
+          )}
+          {!isGlass && node.obscure && (
+            <rect x={SASH_PROFILE} y={SASH_PROFILE} pointerEvents="none"
+              width={Math.max(0, w - SASH_PROFILE * 2)} height={Math.max(0, h - SASH_PROFILE * 2)}
+              fill="url(#obscure)" />
           )}
           {isGlass && (
             <rect x={4} y={4} width={Math.max(0, w - 8)} height={Math.max(0, h - 8)}
@@ -2337,6 +2466,13 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
                           </optgroup>
                         ))}
                       </select>
+                      <label className="block text-xs font-semibold mt-2 mb-1 text-neutral-600">Privacy Glass</label>
+                      <select value={(selectedNode as PaneNode).obscure || ''}
+                        onChange={e => updateProp('obscure', e.target.value || undefined)}
+                        className="w-full p-2 border border-neutral-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white text-xs">
+                        <option value="">Clear (vision)</option>
+                        {OBSCURE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
                     </div>
                   )}
 
@@ -2614,7 +2750,9 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
 
             {/* Glazing Spec — monolithic edits its single lite up top, so this is hidden there */}
             {category !== 'monolithic' && (
-              <GlazingPanel spec={glazingSpec} onChange={setGlazingSpec} category={category} />
+              projectMode === 'window'
+                ? <WindowGlazingPanel spec={glazingSpec} onChange={setGlazingSpec} facets={glazingFacets} onFacetsChange={setGlazingFacets} />
+                : <GlazingPanel spec={glazingSpec} onChange={setGlazingSpec} category={category} />
             )}
 
             {/* Shortcuts */}
@@ -2657,6 +2795,10 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
               style={{ backgroundColor: 'white', backgroundImage: 'radial-gradient(#e2e8f0 1px, transparent 1px)', backgroundSize: '20px 20px' }}
               className="drop-shadow-2xl">
               <defs>
+                <pattern id="obscure" width="6" height="6" patternUnits="userSpaceOnUse">
+                  <circle cx="1.5" cy="1.5" r="0.9" fill="#64748b" opacity="0.55" />
+                  <circle cx="4.5" cy="4.5" r="0.9" fill="#64748b" opacity="0.55" />
+                </pattern>
                 <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
                   <path d="M1,1 L5,3 L1,5" fill="none" stroke="#64748b" strokeWidth="1.5" />
                 </marker>
@@ -2749,7 +2891,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
               const area = (wIn * hIn / 144).toFixed(2);
               const isSel = selectedId === pane.id;
               const typeLabel = projectMode === 'window'
-                ? (WINDOW_PANE_TYPES.find(t => t.value === pane.paneType)?.label || pane.paneType)
+                ? (WINDOW_PANE_TYPES.find(t => t.value === pane.paneType)?.label || pane.paneType) + (pane.obscure ? ` · ${obscureLabel(pane.obscure)}` : '')
                 : category === 'monolithic'
                   ? liteSpecLabel(glazingSpec.lite1)
                   : `IGU ${glazingSpec.build}`;
@@ -3145,6 +3287,104 @@ function GlazingPanel({ spec, onChange, category = 'igu' }: { spec: GlazingSpec;
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// WINDOW GLAZING (supplier orders): nothing is dictated until added
+// ─────────────────────────────────────────────
+function WindowGlazingPanel({ spec, onChange, facets, onFacetsChange }: {
+  spec: GlazingSpec; onChange: (s: GlazingSpec) => void;
+  facets: GlazingFacet[]; onFacetsChange: (f: GlazingFacet[]) => void;
+}) {
+  const has = (f: GlazingFacet) => facets.includes(f);
+  const remove = (f: GlazingFacet) => onFacetsChange(facets.filter(x => x !== f));
+  const add = (f: GlazingFacet) => {
+    if (!f || has(f)) return;
+    // Give a newly added Low-E a sensible generic value so the quote never prints a blank.
+    if (f === 'lowE' && !(spec.lite1.hasLowE && spec.lite1.lowEProduct)) {
+      onChange({ ...spec, lite1: { ...spec.lite1, hasLowE: true, lowEManufacturer: LOW_E_GENERIC, lowEProduct: 'Low-E (unspecified)', lowESurface: 2 } });
+    }
+    onFacetsChange([...facets, f]);
+  };
+  const lites = (fn: (l: LiteSpec) => LiteSpec): GlazingSpec =>
+    ({ ...spec, lite1: fn(spec.lite1), lite2: spec.lite2 && fn(spec.lite2), lite3: spec.lite3 && fn(spec.lite3) });
+  const genericLowE = LOW_E_DATABASE.find(m => m.name === LOW_E_GENERIC)?.products || [];
+  const sel = 'w-full p-1 border border-neutral-300 rounded bg-white text-[11px]';
+
+  const row = (f: GlazingFacet, label: string, control: React.ReactNode) => (
+    <div key={f} className="flex items-center gap-2">
+      <span className="w-16 shrink-0 text-[10px] font-semibold text-neutral-600">{label}</span>
+      <div className="flex-1 min-w-0">{control}</div>
+      <button onClick={() => remove(f)} title="Remove — leave to supplier standard"
+        className="text-neutral-400 hover:text-red-600 text-xs px-1">✕</button>
+    </div>
+  );
+
+  return (
+    <div className="border border-neutral-200 rounded-lg overflow-hidden">
+      <div className="px-3 py-2 bg-neutral-100 flex items-center justify-between">
+        <span className="text-xs font-bold text-neutral-700 uppercase tracking-wider">Glazing</span>
+        <span className="text-[10px] text-neutral-500 truncate ml-2">{windowGlazingSummary(spec, facets)}</span>
+      </div>
+      <div className="p-2.5 space-y-2 bg-white">
+        {facets.length === 0 && (
+          <p className="text-[10px] text-neutral-500">Supplier standard — add only what you need to specify.</p>
+        )}
+        {has('build') && row('build', 'Panes', (
+          <div className="grid grid-cols-3 gap-1">
+            {(['single', 'double', 'triple'] as IguBuild[]).map(b => (
+              <button key={b} onClick={() => onChange(applyBuild(spec, b))}
+                className={`py-0.5 rounded text-[11px] border capitalize ${spec.build === b ? 'bg-neutral-800 text-white border-neutral-800' : 'bg-white border-neutral-300'}`}>{b}</button>
+            ))}
+          </div>
+        ))}
+        {has('tempered') && row('tempered', 'Tempered', <span className="text-[11px] text-neutral-500">All lites</span>)}
+        {has('lowE') && row('lowE', 'Low-E', (
+          <select className={sel} value={spec.lite1.lowEProduct || ''}
+            onChange={e => { const p = genericLowE.find(x => x.name === e.target.value); onChange({ ...spec, lite1: { ...spec.lite1, hasLowE: true, lowEManufacturer: LOW_E_GENERIC, lowEProduct: e.target.value, lowESurface: p?.surfaces[0] ?? 2 } }); }}>
+            {genericLowE.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+          </select>
+        ))}
+        {has('gas') && row('gas', 'Gas', (
+          <select className={sel} value={spec.gasFill1 || 'argon-90'}
+            onChange={e => onChange({ ...spec, gasFill1: e.target.value as GasFill, gasFill2: spec.build === 'triple' ? e.target.value as GasFill : spec.gasFill2 })}>
+            {GAS_FILLS.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
+          </select>
+        ))}
+        {has('spacer') && row('spacer', 'Spacer', (
+          <select className={sel} value={spec.spacer1?.type || 'black-rtps'}
+            onChange={e => {
+              const type = e.target.value as SpacerType;
+              onChange({ ...spec, spacer1: { widthMM: spec.spacer1?.widthMM || '12', type }, spacer2: spec.spacer2 && { ...spec.spacer2, type } });
+            }}>
+            {SPACER_TYPES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+        ))}
+        {has('tint') && row('tint', 'Tint', (
+          <select className={sel} value={spec.lite1.tint}
+            onChange={e => onChange(lites(l => ({ ...l, tint: e.target.value as LiteTint })))}>
+            {LITE_TINTS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+        ))}
+        {has('full') && (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-semibold text-neutral-600">Full glass spec (replaces the items above on the quote)</span>
+              <button onClick={() => remove('full')} className="text-neutral-400 hover:text-red-600 text-xs px-1">✕</button>
+            </div>
+            <GlazingPanel spec={spec} onChange={onChange} category="window" />
+          </div>
+        )}
+        {facets.length < GLAZING_FACETS.length && (
+          <select value="" onChange={e => add(e.target.value as GlazingFacet)}
+            className="w-full p-1.5 border border-dashed border-neutral-300 rounded bg-white text-[11px] text-neutral-600">
+            <option value="">+ Add glazing spec…</option>
+            {GLAZING_FACETS.filter(f => !has(f.value)).map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+          </select>
+        )}
+      </div>
     </div>
   );
 }
