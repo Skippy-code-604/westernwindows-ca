@@ -472,11 +472,22 @@ function windowGlazingSummary(spec: GlazingSpec, facets: GlazingFacet[] = []): s
   return parts.length ? parts.join(' · ') : 'Supplier standard';
 }
 
-// Every section (leaf pane) with its size in inches, left→right / top→bottom. Same basis as the editor canvas
-// and BOM: inside the frame in window mode, full lite in glass mode; split ratios apply after the mullion.
+// Every section (leaf pane) with its size in inches, left→right / top→bottom.
+// Window mode: CENTERLINE size (frame edge / mullion centerline to centerline) — profile-independent, and the
+//   sections add up to the overall frame size.
+// Glass mode: actual lite size (split ratios apply after the gap).
 function collectSections(u: Pick<Unit, 'tree' | 'overallWidth' | 'overallHeight' | 'projectMode'>): { pane: PaneNode; w: number; h: number }[] {
-  const frame = u.projectMode === 'glass' ? 0 : FRAME_THICKNESS * 2;
   const out: { pane: PaneNode; w: number; h: number }[] = [];
+  if (u.projectMode === 'window') {
+    const walkR = (n: TreeNode, r: Region) => {
+      if (n.type === 'pane') { out.push({ pane: n, w: r.x1 - r.x0, h: r.y1 - r.y0 }); return; }
+      const { a, b } = splitRegion(r, n.direction, n.ratio);
+      walkR(n.children[0], a); walkR(n.children[1], b);
+    };
+    walkR(u.tree, { x0: 0, y0: 0, x1: u.overallWidth, y1: u.overallHeight });
+    return out;
+  }
+  const frame = 0;
   const walk = (n: TreeNode, w: number, h: number) => {
     if (n.type === 'pane') { out.push({ pane: n, w, h }); return; }
     const [a, b] = n.children;
@@ -623,6 +634,21 @@ function renderUnitSVGString(unit: Unit): string {
     }
   }
 
+  // Window units: centerline geometry (see splitRegion). Sections are drawn inside their region; mullions are drawn
+  // centred on their centerline. Profile widths only affect the picture.
+  function renderWindowNode(node: TreeNode, r: Region): string {
+    if (node.type === 'pane') {
+      const d = drawnRegion(r, W, H);
+      return renderNode(node, d.x0 * sc, d.y0 * sc, (d.x1 - d.x0) * sc, (d.y1 - d.y0) * sc);
+    }
+    const { a, b, cl } = splitRegion(r, node.direction, node.ratio);
+    const d = drawnRegion(r, W, H), mu = MULLION_THICKNESS * sc;
+    const mull = node.direction === 'V'
+      ? `<rect x="${cl * sc - mu / 2}" y="${d.y0 * sc}" width="${mu}" height="${(d.y1 - d.y0) * sc}" fill="#475569"/>`
+      : `<rect x="${d.x0 * sc}" y="${cl * sc - mu / 2}" width="${(d.x1 - d.x0) * sc}" height="${mu}" fill="#475569"/>`;
+    return renderWindowNode(node.children[0], a) + renderWindowNode(node.children[1], b) + mull;
+  }
+
   function renderNode(node: TreeNode, x: number, y: number, w: number, h: number): string {
     if (node.type === 'split') {
       const [c1, c2] = node.children;
@@ -700,7 +726,7 @@ function renderUnitSVGString(unit: Unit): string {
   let inner = '';
   if (!isGlass) {
     inner += `<rect x="0" y="0" width="${svgW}" height="${svgH}" fill="#475569" stroke="#1e293b" stroke-width="2"/>`;
-    inner += renderNode(unit.tree, FR, FR, svgW - FR*2, svgH - FR*2);
+    inner += renderWindowNode(unit.tree, { x0: 0, y0: 0, x1: W, y1: H });
   } else {
     inner += renderNode(unit.tree, 0, 0, svgW, svgH);
   }
@@ -712,7 +738,8 @@ function renderUnitSVGString(unit: Unit): string {
 }
 
 function generateQuoteHTML(project: Project): string {
-  const date = new Date(project.date).toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' });
+  // Parse YYYY-MM-DD as a LOCAL date: new Date('2026-10-17') is UTC midnight, which prints as Oct 16 in Pacific time.
+  const date = new Date(`${project.date}T00:00`).toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' });
   const totalUnits = project.units.reduce((s, u) => s + u.quantity, 0);
   const totalArea = project.units.reduce((s, u) => s + u.overallWidth * u.overallHeight / 144 * u.quantity, 0);
 
@@ -913,6 +940,10 @@ function generateQuoteHTML(project: Project): string {
             const ro = u.roAllowance ?? DEFAULT_RO_ALLOWANCE;
             const cell = 'padding:3px 8px;font-size:10px';
             const secs = collectSections(u);
+            const mullRows = windowMullions(u).map(m => `<tr>
+                <td style="${cell}">${m.dir === 'V' ? 'Vertical' : 'Horizontal'}</td>
+                <td style="${cell};font-family:monospace">${toFraction(m.at)} from ${m.dir === 'V' ? 'left' : 'bottom'} <span style="color:#94a3b8">(runs ${toFraction(m.span)})</span></td>
+              </tr>`).join('');
             const rowsS = secs.map((s, k) => `<tr>
                 <td style="${cell};font-weight:700">${k + 1}</td>
                 <td style="${cell}">${escHtml(WINDOW_PANE_TYPES.find(t => t.value === s.pane.paneType)?.label || s.pane.paneType)}</td>
@@ -928,9 +959,14 @@ function generateQuoteHTML(project: Project): string {
             </tbody>
           </table>
           <table style="border-collapse:collapse;width:100%;border:1px solid #e2e8f0">
-            <thead><tr style="background:#f1f5f9"><th style="${cell};text-align:left;color:#64748b">#</th><th style="${cell};text-align:left;color:#64748b">Section</th><th style="${cell};text-align:left;color:#64748b">Section size (inside frame)</th><th style="${cell};text-align:left;color:#64748b">Privacy glass</th></tr></thead>
+            <thead><tr style="background:#f1f5f9"><th style="${cell};text-align:left;color:#64748b">#</th><th style="${cell};text-align:left;color:#64748b">Section</th><th style="${cell};text-align:left;color:#64748b">Size to centerlines</th><th style="${cell};text-align:left;color:#64748b">Privacy glass</th></tr></thead>
             <tbody>${rowsS}</tbody>
-          </table>`;
+          </table>
+          ${mullRows ? `<table style="border-collapse:collapse;width:100%;border:1px solid #e2e8f0;margin-top:6px">
+            <thead><tr style="background:#f1f5f9"><th style="${cell};text-align:left;color:#64748b">Mullion</th><th style="${cell};text-align:left;color:#64748b">Centerline (from outside of frame)</th></tr></thead>
+            <tbody>${mullRows}</tbody>
+          </table>` : ''}
+          <div style="font-size:9px;color:#94a3b8;margin-top:4px">Sizes are to mullion centerlines and the outside of the frame. Frame and mullion profiles per supplier standard.</div>`;
           })() : ''}
           <table style="border-collapse:collapse;width:100%;border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;${u.projectMode === 'window' && !(u.glazingFacets || []).includes('full') ? 'display:none' : ''}">
             <thead><tr style="background:#f1f5f9"><th style="padding:4px 8px;font-size:10px;text-align:left;color:#64748b">Component</th><th style="padding:4px 8px;font-size:10px;text-align:left;color:#64748b">Specification</th></tr></thead>
@@ -1011,7 +1047,53 @@ function findNode(node: TreeNode, id: string): TreeNode | null {
 // Reads the pane tree left-to-right and builds the unit label string.
 // fixed panes → 'O', any operable pane → 'X'
 // Example: XO, OXO, XOX, etc.
-// Size in inches of the region a node occupies. Mirrors renderUnitSVGString: a split's ratio applies to the space
+// ── WINDOW GEOMETRY: CENTERLINE DIMENSIONING ─────────────────────────────────
+// Window units are dimensioned the way shop drawings are: overall frame size + mullion CENTERLINES measured from the
+// outside of the frame. A split's ratio puts its mullion centerline at that fraction of its region; a region is
+// bounded by the frame's outside edges or by parent mullion centerlines. Nothing here depends on the supplier's frame
+// or mullion widths — those (FRAME_THICKNESS / MULLION_THICKNESS) are used only to DRAW, never to dimension.
+// Glass mode keeps its own semantics (separate lites with gaps).
+interface Region { x0: number; y0: number; x1: number; y1: number }   // inches; origin = outside top-left of frame
+const EPS = 1e-6;
+
+function splitRegion(r: Region, dir: 'V' | 'H', ratio: number): { a: Region; b: Region; cl: number } {
+  if (dir === 'V') { const cl = r.x0 + (r.x1 - r.x0) * ratio; return { a: { ...r, x1: cl }, b: { ...r, x0: cl }, cl }; }
+  const cl = r.y0 + (r.y1 - r.y0) * ratio; return { a: { ...r, y1: cl }, b: { ...r, y0: cl }, cl };
+}
+
+// Visible glass/sash area of a region for drawing: frame-facing sides pull in by the frame, mullion-facing sides by
+// half a mullion.
+function drawnRegion(r: Region, W: number, H: number): Region {
+  const inX0 = r.x0 < EPS ? FRAME_THICKNESS : MULLION_THICKNESS / 2;
+  const inX1 = r.x1 > W - EPS ? FRAME_THICKNESS : MULLION_THICKNESS / 2;
+  const inY0 = r.y0 < EPS ? FRAME_THICKNESS : MULLION_THICKNESS / 2;
+  const inY1 = r.y1 > H - EPS ? FRAME_THICKNESS : MULLION_THICKNESS / 2;
+  return { x0: r.x0 + inX0, y0: r.y0 + inY0, x1: Math.max(r.x0 + inX0, r.x1 - inX1), y1: Math.max(r.y0 + inY0, r.y1 - inY1) };
+}
+
+// The region a node occupies (for a split: the region its mullion divides).
+function findRegion(node: TreeNode, id: string, r: Region): Region | null {
+  if (node.id === id) return r;
+  if (node.type !== 'split') return null;
+  const { a, b } = splitRegion(r, node.direction, node.ratio);
+  return findRegion(node.children[0], id, a) ?? findRegion(node.children[1], id, b);
+}
+
+// Every mullion centerline of a window unit: verticals measured from the LEFT outside edge, horizontals from the
+// BOTTOM outside edge (sill up), each with the length of frame it runs across.
+function windowMullions(u: Pick<Unit, 'tree' | 'overallWidth' | 'overallHeight'>): { dir: 'V' | 'H'; at: number; span: number }[] {
+  const out: { dir: 'V' | 'H'; at: number; span: number }[] = [];
+  const walk = (n: TreeNode, r: Region) => {
+    if (n.type !== 'split') return;
+    const { a, b, cl } = splitRegion(r, n.direction, n.ratio);
+    out.push(n.direction === 'V' ? { dir: 'V', at: cl, span: r.y1 - r.y0 } : { dir: 'H', at: u.overallHeight - cl, span: r.x1 - r.x0 });
+    walk(n.children[0], a); walk(n.children[1], b);
+  };
+  walk(u.tree, { x0: 0, y0: 0, x1: u.overallWidth, y1: u.overallHeight });
+  return out;
+}
+
+// Size in inches of the region a node occupies — GLASS MODE semantics: a split's ratio applies to the space
 // left after the mullion, V puts children[0] on the left, H puts children[0] on top.
 function nodeBounds(node: TreeNode, id: string, w: number, h: number): { w: number; h: number } | null {
   if (node.id === id) return { w, h };
@@ -1932,7 +2014,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
   }, [dragState, scale, tree, historyIdx, editorState]);
 
   // SVG Renderer
-  const panesList: (PaneNode & { x: number; y: number; w: number; h: number })[] = [];
+  const panesList: (PaneNode & { x: number; y: number; w: number; h: number; clW: number; clH: number })[] = [];
 
   // Tempered glass cutout exclusion zone (5× glass thickness in inches)
   const glassMM = parseInt(glazingSpec.lite1.thicknessMM || '6');
@@ -2031,13 +2113,22 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
     pushState({ ...editorState, tree: newTree });
   };
 
-  const renderNode = (node: TreeNode, x: number, y: number, w: number, h: number): React.ReactNode => {
+  // `reg` = window units only: the node's region in centerline geometry (inches, outside-of-frame origin). When given,
+  // x/y/w/h are derived from it; the canvas origin is the inside of the frame.
+  const renderNode = (node: TreeNode, x: number, y: number, w: number, h: number, reg?: Region): React.ReactNode => {
     const sel = selectedId === node.id;
     const isGlass = projectMode === 'glass';
+    const toPx = (inch: number) => (inch - FRAME_THICKNESS) * scale;
 
     if (node.type === 'pane') {
-      panesList.push({ ...node, x, y, w, h });
-      const wIn = w / scale, hIn = h / scale;
+      if (reg) {
+        const d = drawnRegion(reg, overallWidth, overallHeight);
+        x = toPx(d.x0); y = toPx(d.y0); w = (d.x1 - d.x0) * scale; h = (d.y1 - d.y0) * scale;
+      }
+      // Window units label/BOM the centerline size (profile-independent); glass mode the actual lite size.
+      const clW = reg ? reg.x1 - reg.x0 : w / scale, clH = reg ? reg.y1 - reg.y0 : h / scale;
+      panesList.push({ ...node, x, y, w, h, clW, clH });
+      const wIn = clW, hIn = clH;
       const fontSize = Math.max(9, Math.min(13, w / 8));
       const glassColor = isGlass ? (GLASS_FILL[node.glassType || 'tempered']) : '#f0f9ff';
 
@@ -2200,6 +2291,41 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
             </text>
           )}
           <rect x={0} y={0} width={w} height={h} fill="transparent" />
+        </g>
+      );
+    }
+
+    if (node.type === 'split' && reg) {
+      // Window units: mullion centred on its centerline at `ratio` of this region.
+      const isV = node.direction === 'V';
+      const { a, b, cl } = splitRegion(reg, node.direction, node.ratio);
+      const d = drawnRegion(reg, overallWidth, overallHeight);
+      const mullPx = MULLION_THICKNESS * scale;
+      const mX = isV ? toPx(cl) - mullPx / 2 : toPx(d.x0), mY = isV ? toPx(d.y0) : toPx(cl) - mullPx / 2;
+      const mW = isV ? mullPx : (d.x1 - d.x0) * scale, mH = isV ? (d.y1 - d.y0) * scale : mullPx;
+      const isSnapped = snapIndicator !== null && Math.abs(node.ratio - snapIndicator) < 0.01;
+      const spanW = reg.x1 - reg.x0, spanH = reg.y1 - reg.y0;
+      return (
+        <g key={node.id} onClick={e => { e.stopPropagation(); setSelectedId(node.id); }}>
+          {sel && <rect x={toPx(d.x0)} y={toPx(d.y0)} width={(d.x1 - d.x0) * scale} height={(d.y1 - d.y0) * scale} fill="#bfdbfe" opacity={0.3} />}
+          {renderNode(node.children[0], 0, 0, 0, 0, a)}
+          {renderNode(node.children[1], 0, 0, 0, 0, b)}
+          <rect x={mX} y={mY} width={mW} height={mH}
+            fill={isSnapped ? '#3b82f6' : '#d1d5db'}
+            stroke={isSnapped ? '#1d4ed8' : '#374151'} strokeWidth={1} />
+          <rect
+            x={isV ? mX - 5 : mX} y={isV ? mY : mY - 5}
+            width={isV ? mW + 10 : mW} height={isV ? mH : mH + 10}
+            fill="transparent" style={{ cursor: isV ? 'col-resize' : 'row-resize' }}
+            // The drag code divides by (bounds − mullion); passing span + mullion makes it move the centerline by
+            // pointer distance ÷ region span, i.e. 1:1 with the mouse.
+            onMouseDown={e => onDragStart(e, node.id, node.ratio, spanW + MULLION_THICKNESS, spanH + MULLION_THICKNESS, node.direction)}
+          />
+          {isSnapped && (
+            <text x={mX + mW / 2} y={mY + mH / 2}
+              textAnchor="middle" dominantBaseline="middle" fontSize={9} fill="white" fontWeight="bold"
+              style={{ pointerEvents: 'none' }}>⊙</text>
+          )}
         </g>
       );
     }
@@ -2705,8 +2831,40 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
                     </div>
                     <p className="text-[10px] text-neutral-400 mt-1">Snaps at ¼, ⅓, ½, ⅔, ¾</p>
                   </div>
-                  {(() => {
-                    // Type the first section's size in inches (left section for a vertical mullion, top for horizontal).
+                  {projectMode === 'window' ? (() => {
+                    // Window units: the mullion CENTERLINE, measured from the outside of the frame — left edge for a
+                    // vertical mullion, bottom edge (sill up) for a horizontal one. Same number the quote prints.
+                    const s = selectedNode as SplitNode;
+                    const reg = findRegion(tree, selectedId, { x0: 0, y0: 0, x1: overallWidth, y1: overallHeight });
+                    if (!reg) return null;
+                    const isV = s.direction === 'V';
+                    const { cl } = splitRegion(reg, s.direction, s.ratio);
+                    const shown = isV ? cl : overallHeight - cl;
+                    const start = isV ? reg.x0 : reg.y0, span = isV ? reg.x1 - reg.x0 : reg.y1 - reg.y0;
+                    const apply = (raw: string) => {
+                      const v = parseInches(raw);
+                      if (!Number.isFinite(v) || span <= 0) return;
+                      const clFromTopLeft = isV ? v : overallHeight - v;
+                      const ratio = Math.min(0.95, Math.max(0.05, (clFromTopLeft - start) / span));
+                      pushState({ ...editorState, tree: updateNode(tree, selectedId, n => ({ ...n, ratio })) });
+                    };
+                    const before = cl - start, after = start + span - cl;   // centerline sizes either side
+                    return (
+                      <div>
+                        <label className="block text-xs font-semibold mb-1 text-neutral-600">
+                          Mullion centerline — from {isV ? 'left' : 'bottom'} of window
+                        </label>
+                        <input key={`${selectedId}-${s.ratio}`} defaultValue={toFraction(shown).replace('"', '')}
+                          onBlur={e => apply(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') apply((e.target as HTMLInputElement).value); }}
+                          placeholder='e.g. 16 or 15-1/2'
+                          className="w-full p-2 border border-neutral-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                        <p className="text-[10px] text-neutral-400 mt-1">
+                          {isV ? `Left ${toFraction(before)} · Right ${toFraction(after)}` : `Top ${toFraction(before)} · Bottom ${toFraction(after)}`} (centerline) · Enter to apply
+                        </p>
+                      </div>
+                    );
+                  })() : (() => {                    // Type the first section's size in inches (left section for a vertical mullion, top for horizontal).
                     const s = selectedNode as SplitNode;
                     // Same basis as the canvas and BOM: inside the frame (window mode) or the full lite (glass mode).
                     const frame = projectMode === 'glass' ? 0 : FRAME_THICKNESS * 2;
@@ -2813,7 +2971,9 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
                   strokeWidth={projectMode === 'glass' ? 2 : 5}
                   strokeDasharray={projectMode === 'glass' ? '10 4' : undefined} />
                 <g transform={`translate(${innerOX},${innerOY})`}>
-                  {renderNode(tree, 0, 0, innerW, innerH)}
+                  {projectMode === 'window'
+                    ? renderNode(tree, 0, 0, innerW, innerH, { x0: 0, y0: 0, x1: overallWidth, y1: overallHeight })
+                    : renderNode(tree, 0, 0, innerW, innerH)}
                 </g>
         {/* WIDTH DIM — clickable */}
                 <g transform="translate(0,-34)" style={{ cursor: 'pointer' }}
@@ -2887,7 +3047,8 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
           </div>
           <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5">
             {panesList.map((pane, idx) => {
-              const wIn = pane.w / scale, hIn = pane.h / scale;
+              // Window units: centerline size (what we dimension to the supplier); glass mode: actual lite size.
+              const wIn = pane.clW, hIn = pane.clH;
               const area = (wIn * hIn / 144).toFixed(2);
               const isSel = selectedId === pane.id;
               const typeLabel = projectMode === 'window'
@@ -2904,7 +3065,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
                     <span className="text-[9px] font-mono bg-white px-1 py-0.5 rounded text-neutral-500 border border-neutral-200 truncate max-w-[100px]">{typeLabel}</span>
                   </div>
                   <div className="font-semibold text-neutral-900">{toFraction(wIn)} × {toFraction(hIn)}</div>
-                  <div className="text-neutral-400 mt-0.5">{area} ft²
+                  <div className="text-neutral-400 mt-0.5">{projectMode === 'window' ? 'centerline size' : `${area} ft²`}
                     {projectMode === 'glass' && (pane.cutouts || []).length > 0 && <span className="ml-1.5 text-amber-600">⬤ {(pane.cutouts || []).length} holes</span>}
                   </div>
                 </div>
@@ -2912,8 +3073,8 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
             })}
             {panesList.length > 1 && (
               <div className="p-2 rounded-lg bg-neutral-100 border border-neutral-200 text-xs mt-1">
-                <span className="font-bold text-neutral-500">TOTAL </span>
-                <span className="font-semibold">{panesList.reduce((s, p) => s + (p.w / scale) * (p.h / scale) / 144, 0).toFixed(2)} ft²</span>
+                <span className="font-bold text-neutral-500">{projectMode === 'window' ? 'FRAME ' : 'TOTAL '}</span>
+                <span className="font-semibold">{(projectMode === 'window' ? overallWidth * overallHeight / 144 : panesList.reduce((s, p) => s + (p.w / scale) * (p.h / scale) / 144, 0)).toFixed(2)} ft²</span>
               </div>
             )}
           </div>
