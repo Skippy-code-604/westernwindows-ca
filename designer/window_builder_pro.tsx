@@ -1453,11 +1453,25 @@ function ProjectManager({
     const name = `${project.name} - Quote.pdf`.replace(/[^a-zA-Z0-9\s\-_.]/g, '');
     if (window.electronAPI) {
       await window.electronAPI.exportPDF(html, name);
-    } else {
-      const blob = new Blob([html], { type: 'text/html' });
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-      a.download = name.replace('.pdf', '.html'); a.click();
+      return;
     }
+    // Web: print the quote from a hidden frame → the browser's "Save as PDF" (same Chromium engine Electron's
+    // printToPDF uses, and the quote's @page sets Letter landscape). Previously this downloaded the raw HTML.
+    const frame = document.createElement('iframe');
+    frame.style.cssText = 'position:fixed;width:0;height:0;border:0;visibility:hidden';
+    frame.srcdoc = html;
+    const prevTitle = document.title;
+    frame.onload = () => {
+      // The suggested PDF file name comes from the document title.
+      document.title = name.replace(/\.pdf$/, '');
+      if (frame.contentDocument) frame.contentDocument.title = document.title;
+      const cleanup = () => { document.title = prevTitle; frame.remove(); };
+      frame.contentWindow?.addEventListener('afterprint', () => setTimeout(cleanup, 100));
+      frame.contentWindow?.focus();
+      frame.contentWindow?.print();
+      setTimeout(() => { if (document.body.contains(frame)) cleanup(); }, 60_000);   // fallback if afterprint never fires
+    };
+    document.body.appendChild(frame);
   };
 
   const handleExportCSV = async () => {
