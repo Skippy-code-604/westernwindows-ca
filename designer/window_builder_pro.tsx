@@ -119,6 +119,8 @@ interface Unit {
   glazingSpec: GlazingSpec;
   roAllowance?: number;   // inches, TOTAL added to unit size for the rough opening (half per side). Default DEFAULT_RO_ALLOWANCE.
   glazingFacets?: GlazingFacet[];  // window units only: which glazing specs are dictated; none = supplier standard
+  colorExterior?: string;  // window units: 'White' | 'Brown' | 'Black' or a manufacturer colour name; undefined = not specified
+  colorInterior?: string;  // undefined = same as exterior
 }
 
 interface Project {
@@ -299,6 +301,22 @@ const OBSCURE_OPTIONS: { value: ObscureType; label: string }[] = [
 const obscureLabel = (o?: ObscureType) => OBSCURE_OPTIONS.find(x => x.value === o)?.label || '';
 // For user text placed into the quote HTML (names, locations, notes).
 const escHtml = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[c]);
+
+// Frame colours. Standard choices plus any manufacturer colour name (e.g. Iron Ore, Commercial Brown, Driftwood).
+const STD_COLORS = ['White', 'Brown', 'Black'] as const;
+// Drawing fill for a frame colour (custom names get a neutral grey — we can't know their shade).
+const frameFill = (c?: string): string => {
+  const k = (c || '').toLowerCase();
+  if (k === 'white') return '#e5e7eb';
+  if (k === 'black') return '#1f2937';
+  if (k === 'brown' || k.includes('brown') || k.includes('bronze')) return '#6b4f3a';
+  return '#64748b';
+};
+// "White" · "Black ext / White int" · "Not specified"
+const colorLabel = (u: Pick<Unit, 'colorExterior' | 'colorInterior'>): string => {
+  if (!u.colorExterior) return 'Not specified';
+  return u.colorInterior && u.colorInterior !== u.colorExterior ? `${u.colorExterior} ext / ${u.colorInterior} int` : u.colorExterior;
+};
 
 const GLAZING_FACETS: { value: GlazingFacet; label: string }[] = [
   { value: 'build',    label: 'Panes (double / triple)' },
@@ -503,7 +521,7 @@ function generateCSV(project: Project): string {
   const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
   // One column per component so the manufacturer can parse/import each spec directly.
   const header = [
-    '#','Name','Location','Qty','Width (in)','Height (in)','Area (ft²)','Category','Build',
+    '#','Name','Location','Qty','Width (in)','Height (in)','Area (ft²)','Category','Colour','Build',
     'Lite 1 (Ext)','Spacer 1','Gas 1','Lite 2','Spacer 2','Gas 2','Lite 3 (Int)',
     'Total (mm)','Total (in)',
   ];
@@ -519,7 +537,7 @@ function generateCSV(project: Project): string {
       i + 1, u.name, u.location, u.quantity,
       u.overallWidth, u.overallHeight,
       (u.overallWidth * u.overallHeight / 144 * u.quantity).toFixed(2),
-      cat, b,
+      cat, u.projectMode === 'window' ? colorLabel(u) : '', b,
       liteStr(g.lite1),
       b === 'single' ? '' : spacerStr(g.spacer1),
       b === 'single' ? '' : gasStr(g.gasFill1),
@@ -645,8 +663,8 @@ function renderUnitSVGString(unit: Unit): string {
     const { a, b, cl } = splitRegion(r, node.direction, node.ratio);
     const d = drawnRegion(r, W, H), mu = MULLION_THICKNESS * sc;
     const mull = node.direction === 'V'
-      ? `<rect x="${cl * sc - mu / 2}" y="${d.y0 * sc}" width="${mu}" height="${(d.y1 - d.y0) * sc}" fill="#475569"/>`
-      : `<rect x="${d.x0 * sc}" y="${cl * sc - mu / 2}" width="${(d.x1 - d.x0) * sc}" height="${mu}" fill="#475569"/>`;
+      ? `<rect x="${cl * sc - mu / 2}" y="${d.y0 * sc}" width="${mu}" height="${(d.y1 - d.y0) * sc}" fill="${frameFill(unit.colorExterior)}" stroke="#1e293b" stroke-width="0.5"/>`
+      : `<rect x="${d.x0 * sc}" y="${cl * sc - mu / 2}" width="${(d.x1 - d.x0) * sc}" height="${mu}" fill="${frameFill(unit.colorExterior)}" stroke="#1e293b" stroke-width="0.5"/>`;
     return renderWindowNode(node.children[0], a) + renderWindowNode(node.children[1], b) + mull;
   }
 
@@ -726,7 +744,7 @@ function renderUnitSVGString(unit: Unit): string {
 
   let inner = '';
   if (!isGlass) {
-    inner += `<rect x="0" y="0" width="${svgW}" height="${svgH}" fill="#475569" stroke="#1e293b" stroke-width="2"/>`;
+    inner += `<rect x="0" y="0" width="${svgW}" height="${svgH}" fill="${frameFill(unit.colorExterior)}" stroke="#1e293b" stroke-width="2"/>`;
     inner += renderWindowNode(unit.tree, { x0: 0, y0: 0, x1: W, y1: H });
   } else {
     inner += renderNode(unit.tree, 0, 0, svgW, svgH);
@@ -791,7 +809,8 @@ function generateQuoteHTML(project: Project): string {
         <td style="${tdc};font-family:monospace;font-size:12px">${toFraction(u.overallWidth)}</td>
         <td style="${tdc};font-family:monospace;font-size:12px">${toFraction(u.overallHeight)}</td>
         <td style="${tdc};font-size:10px;font-weight:700;font-family:monospace;color:#2563eb">${deriveXOString(u.tree)}</td>
-        <td colspan="5" style="${tdSpec}">${glazing}</td>
+        <td style="${tdSpec};white-space:nowrap;${u.colorExterior ? 'font-weight:600' : 'color:#b45309;font-weight:700'}">${escHtml(colorLabel(u))}</td>
+        <td colspan="4" style="${tdSpec}">${glazing}</td>
         <td style="${td};text-align:right;color:#64748b">${area} ft²</td>
       </tr>`;
     }
@@ -837,7 +856,7 @@ function generateQuoteHTML(project: Project): string {
   .totals-row { background: #f1f5f9; font-weight: 700; }
   .totals-row td { padding: 10px 12px; border-top: 2px solid #cbd5e1; }
   .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 10px; color: #94a3b8; }
-  .badge { display: inline-block; padding: 2px 8px; background: #dbeafe; color: #1d4ed8; border-radius: 99px; font-size: 10px; font-weight: 600; }
+  .badge { white-space: nowrap; display: inline-block; padding: 2px 8px; background: #dbeafe; color: #1d4ed8; border-radius: 99px; font-size: 10px; font-weight: 600; }
 </style>
 </head><body>
   <div class="header">
@@ -876,7 +895,8 @@ function generateQuoteHTML(project: Project): string {
         <th style="width:58px;text-align:center">Height</th>
         ${project.units.length && project.units.every(u => u.projectMode === 'window')
           ? `<th style="width:52px;text-align:center">Config</th>
-        <th colspan="5">Glazing</th>`
+        <th>Colour</th>
+        <th colspan="4">Glazing</th>`
           : `<th style="width:52px;text-align:center">Build</th>
         <th>Lite 1 (Ext)</th>
         <th>Spacer</th>
@@ -955,6 +975,7 @@ function generateQuoteHTML(project: Project): string {
           <table style="border-collapse:collapse;width:100%;border:1px solid #e2e8f0;margin-bottom:6px">
             <tbody>
               <tr><td style="color:#64748b;${cell};white-space:nowrap">Frame size</td><td style="${cell};font-weight:600">${toFraction(u.overallWidth)} × ${toFraction(u.overallHeight)}</td></tr>
+              <tr><td style="color:#64748b;${cell};white-space:nowrap">Colour</td><td style="${cell};${u.colorExterior ? 'font-weight:600' : 'color:#b45309;font-weight:700'}">${escHtml(colorLabel(u))}</td></tr>
               <tr><td style="color:#64748b;${cell};white-space:nowrap">Rough opening</td><td style="${cell}">${toFraction(u.overallWidth + ro)} × ${toFraction(u.overallHeight + ro)} <span style="color:#94a3b8">(+${toFraction(ro)} total)</span></td></tr>
               <tr><td style="color:#64748b;${cell};white-space:nowrap">Glazing</td><td style="${cell}">${escHtml(windowGlazingSummary(u.glazingSpec, u.glazingFacets))}</td></tr>
             </tbody>
@@ -1165,6 +1186,7 @@ const makeNewUnit = (): Unit => ({
   projectMode: 'window', overallWidth: 48, overallHeight: 48,
   tree: makeInitialPane(),
   glazingSpec: makeDefaultGlazing(),
+  colorExterior: 'White',
 });
 
 const makeNewProject = (): Project => ({
@@ -1784,6 +1806,8 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
   const [glazingSpec, setGlazingSpec] = useState<GlazingSpec>(unit.glazingSpec || makeDefaultGlazing());
   // Window units: which glazing specs are dictated to the supplier (none = supplier standard)
   const [glazingFacets, setGlazingFacets] = useState<GlazingFacet[]>(unit.glazingFacets ?? []);
+  const [colorExterior, setColorExterior] = useState<string | undefined>(unit.colorExterior);
+  const [colorInterior, setColorInterior] = useState<string | undefined>(unit.colorInterior);
   const [cutoutMode, setCutoutMode] = useState(false);
   const [cutoutDiameter, setCutoutDiameter] = useState(1.25);
   const [cutoutBlocked, setCutoutBlocked] = useState(false);
@@ -1801,8 +1825,8 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
 
   // Sync back to project whenever state changes
   useEffect(() => {
-    onSave({ tree, overallWidth, overallHeight, projectMode, glazingSpec, roAllowance, glazingFacets });
-  }, [editorState, glazingSpec, glazingFacets]);
+    onSave({ tree, overallWidth, overallHeight, projectMode, glazingSpec, roAllowance, glazingFacets, colorExterior, colorInterior });
+  }, [editorState, glazingSpec, glazingFacets, colorExterior, colorInterior]);
 
   const pushState = useCallback((next: EditorState) => {
     setHistory(h => [...h.slice(0, historyIdx + 1), next]);
@@ -2316,7 +2340,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
           {renderNode(node.children[0], 0, 0, 0, 0, a)}
           {renderNode(node.children[1], 0, 0, 0, 0, b)}
           <rect x={mX} y={mY} width={mW} height={mH}
-            fill={isSnapped ? '#3b82f6' : '#d1d5db'}
+            fill={isSnapped ? '#3b82f6' : frameFill(colorExterior)}
             stroke={isSnapped ? '#1d4ed8' : '#374151'} strokeWidth={1} />
           <rect
             x={isV ? mX - 5 : mX} y={isV ? mY : mY - 5}
@@ -2506,6 +2530,20 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
                       ))}
                     </select>
                   </div>
+                </div>
+              )}
+              {projectMode === 'window' && (
+                <div className="mt-3 space-y-2">
+                  <ColorPicker label={colorInterior !== undefined ? 'Exterior colour' : 'Colour'} value={colorExterior} onChange={setColorExterior} />
+                  <label className="flex items-center gap-1.5 text-[11px] text-neutral-600 cursor-pointer">
+                    <input type="checkbox" checked={colorInterior !== undefined}
+                      onChange={e => setColorInterior(e.target.checked ? 'White' : undefined)} />
+                    Different interior colour
+                  </label>
+                  {colorInterior !== undefined && (
+                    <ColorPicker label="Interior colour" value={colorInterior} onChange={v => setColorInterior(v ?? '')} />
+                  )}
+                  {!colorExterior && <p className="text-[10px] font-semibold text-amber-700">Colour not specified — pick one before ordering.</p>}
                 </div>
               )}
             </div>
@@ -2971,7 +3009,7 @@ function UnitEditor({ unit, projectName, onBack, onSave, onSaveProject, onAddUni
               </defs>
               <g transform={`translate(${px},${py})`}>
                 <rect x={0} y={0} width={overallWidth * scale} height={overallHeight * scale}
-                  fill="#f8fafc"
+                  fill={projectMode === 'window' ? frameFill(colorExterior) : '#f8fafc'}
                   stroke={projectMode === 'glass' ? '#10b981' : '#0f172a'}
                   strokeWidth={projectMode === 'glass' ? 2 : 5}
                   strokeDasharray={projectMode === 'glass' ? '10 4' : undefined} />
@@ -3452,6 +3490,37 @@ function GlazingPanel({ spec, onChange, category = 'igu' }: { spec: GlazingSpec;
             <span className="text-sm font-bold text-white font-mono">{totalLabel}</span>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// FRAME COLOUR: standard swatches + any manufacturer colour name
+// ─────────────────────────────────────────────
+function ColorPicker({ label, value, onChange }: { label: string; value?: string; onChange: (v: string | undefined) => void }) {
+  const isStd = (v?: string) => !!v && (STD_COLORS as readonly string[]).includes(v);
+  const [customMode, setCustomMode] = useState(!!value && !isStd(value));
+  return (
+    <div>
+      <label className="block text-xs font-semibold mb-1 text-neutral-600">{label}</label>
+      <div className="grid grid-cols-4 gap-1">
+        {STD_COLORS.map(c => (
+          <button key={c} onClick={() => { setCustomMode(false); onChange(c); }}
+            className={`flex items-center justify-center gap-1 py-1 rounded border text-[11px] ${value === c && !customMode ? 'border-blue-600 bg-blue-50 font-semibold' : 'border-neutral-300 bg-white hover:bg-neutral-50'}`}>
+            <span className="w-3 h-3 rounded-full border border-neutral-400" style={{ background: frameFill(c) }} />{c}
+          </button>
+        ))}
+        <button onClick={() => { setCustomMode(true); if (isStd(value)) onChange(undefined); }}
+          className={`py-1 rounded border text-[11px] ${customMode ? 'border-blue-600 bg-blue-50 font-semibold' : 'border-neutral-300 bg-white hover:bg-neutral-50'}`}>
+          Custom
+        </button>
+      </div>
+      {customMode && (
+        <input value={isStd(value) ? '' : value || ''} autoFocus
+          onChange={e => onChange(e.target.value.trim() ? e.target.value : undefined)}
+          placeholder="Manufacturer colour, e.g. Iron Ore, Commercial Brown"
+          className="mt-1 w-full p-1.5 border border-neutral-300 rounded text-xs focus:ring-2 focus:ring-blue-500 outline-none" />
       )}
     </div>
   );
