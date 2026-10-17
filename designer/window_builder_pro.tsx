@@ -924,16 +924,16 @@ function generateQuoteHTML(project: Project): string {
       <div style="page-break-inside:avoid;display:flex;gap:20px;align-items:flex-start;padding:14px 16px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:10px;background:${i%2===0?'#ffffff':'#f8fafc'}">
         <div style="flex-shrink:0;text-align:center">
           ${svgStr}
-          <div style="font-size:9px;color:#94a3b8;margin-top:4px;font-family:monospace">${toFraction(u.overallWidth)}" × ${toFraction(u.overallHeight)}"</div>
+          <div style="font-size:9px;color:#94a3b8;margin-top:4px;font-family:monospace">${toFraction(u.overallWidth)} × ${toFraction(u.overallHeight)}</div>
         </div>
         <div style="flex:1">
-          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
-            <div>
-              <span style="font-size:13px;font-weight:700;color:#1e293b">#${i+1} &mdash; ${u.name}</span>
-              ${u.location ? `<span style="font-size:11px;color:#64748b;margin-left:8px">${u.location}</span>` : ''}
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:8px">
+            <div style="white-space:nowrap">
+              <span style="font-size:13px;font-weight:700;color:#1e293b">#${i+1} &mdash; ${escHtml(u.name)}</span>
+              ${u.location ? `<span style="font-size:11px;color:#64748b;margin-left:8px">${escHtml(u.location)}</span>` : ''}
               ${u.projectMode === 'window' ? `<span style="font-family:monospace;font-size:14px;font-weight:900;color:#2563eb;letter-spacing:2px;margin-left:10px">${deriveXOString(u.tree)}</span>` : ''}
             </div>
-            <div style="font-size:10px;color:#64748b">Qty: <strong>${u.quantity}</strong>${u.projectMode === 'window' && !(u.glazingFacets || []).includes('full') ? '' : ` &nbsp;&nbsp; IGU: <strong>${totalMM.toFixed(2)}mm (${mmToFrac(totalMM)})</strong>`}</div>
+            <div style="font-size:10px;color:#64748b;white-space:nowrap">Qty: <strong>${u.quantity}</strong>${u.projectMode === 'window' && !(u.glazingFacets || []).includes('full') ? '' : ` &nbsp;&nbsp; IGU: <strong>${totalMM.toFixed(2)}mm (${mmToFrac(totalMM)})</strong>`}</div>
           </div>
           ${u.projectMode === 'window' ? (() => {
             // Window from a supplier: frame size + rough opening, glazing as specified, and each section's
